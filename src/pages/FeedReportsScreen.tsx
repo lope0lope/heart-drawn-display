@@ -72,7 +72,8 @@ export default function FeedReportsScreen() {
             {allLines.map((l, i) => {
               const avg = (l[cycleKey] / l.crocs * 1000).toFixed(0);
               const prevKey = cycleKey === 'cycle3_kg' ? 'cycle2_kg' : cycleKey === 'cycle2_kg' ? 'cycle1_kg' : null;
-              const delta = prevKey ? ((l[cycleKey] - l[prevKey as keyof typeof l] as number) / (l[prevKey as keyof typeof l] as number) * 100) : null;
+              const prevVal = prevKey ? (l as any)[prevKey] as number : 0;
+              const delta = prevKey ? ((l[cycleKey] - prevVal) / prevVal * 100) : null;
               const col = delta === null ? 'text-ct-text3' : delta > 0 ? 'text-ct-good' : delta < -5 ? 'text-ct-danger' : 'text-ct-warn';
               const isLow = l.line === 'J';
               return (
