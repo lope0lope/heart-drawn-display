@@ -1,4 +1,6 @@
-import { penData, SIZE_BANDS, CONDITIONS, sizeBand, sizeBandColor, CULL_READINESS } from '@/data/mockData';
+import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
+import { SIZE_BANDS, sizeBand, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
+import { CULL_READINESS } from '@/data/mockData';
 
 function NoteBox({ children, variant }: { children: React.ReactNode; variant?: 'warn' | 'danger' }) {
   const borderColor = variant === 'warn' ? 'border-l-ct-warn' : variant === 'danger' ? 'border-l-ct-danger' : 'border-l-ct-accent';
@@ -44,25 +46,38 @@ function KPI({ label, value, sub, delta, variant }: { label: string; value: stri
 }
 
 export default function DashboardScreen() {
-  const all = [...penData.GH1, ...penData.GH2].filter(c => c.occupied);
-  const bc = [0, 0, 0, 0, 0, 0];
-  all.forEach(c => { const b = sizeBand(c.sizeCm!); if (b !== null) bc[b]++; });
-  const maxB = Math.max(...bc);
+  const { data: allCrocs, isLoading } = useAllCrocs();
+  const { data: conditionDefs } = useConditionCodes();
 
-  const cc: Record<string, number> = {};
-  all.forEach(c => c.conds.forEach(cd => cc[cd] = (cc[cd] || 0) + 1));
+  if (isLoading || !allCrocs) {
+    return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading live data…</div>;
+  }
+
+  const occupied = getOccupied(allCrocs);
+  const gh1Count = occupied.filter(c => c.pen_id === 'GH1').length;
+  const gh2Count = occupied.filter(c => c.pen_id === 'GH2').length;
+  
+  const bc = countSizeBands(occupied);
+  const maxB = Math.max(...bc, 1);
+
+  const cc = countConditions(occupied);
+  const totalCondFlags = Object.values(cc).reduce((a, b) => a + b, 0);
+  const uniqueCondTypes = Object.keys(cc).length;
   const maxC = Math.max(...Object.values(cc), 1);
+
+  // Treatment = crocs with any condition code
+  const inTreatment = occupied.filter(c => c.condition_codes.length > 0).length;
 
   return (
     <div>
       <NoteBox>
-        <strong>Inspection cycle opens in 14 days.</strong> GH1 Row F has an elevated DS cluster. 3 MN flags on GH2 Row J — feeder check recommended. AI advisory has been updated from last upload.
+        <strong>Inspection cycle opens in 14 days.</strong> Data loaded from Supabase — {allCrocs.length} records across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} condition flags active.` : 'No condition flags in current dataset.'} AI advisory will update from next upload.
       </NoteBox>
 
       <div className="grid grid-cols-3 gap-3.5 mb-5">
-        <KPI label="Active — Skin Track" value="4,618" delta="GH1: 2,310 · GH2: 2,308" />
-        <KPI label="In Treatment" value="304" sub="Injury / Disease hold" delta="↑ 28 new this cycle" variant="warn" />
-        <KPI label="Condition Flags" value="187" sub="8 condition types active" variant="danger" />
+        <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count.toLocaleString()} · GH2: ${gh2Count.toLocaleString()}`} />
+        <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `${inTreatment} with conditions` : 'None flagged'} variant="warn" />
+        <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} condition types active`} variant="danger" />
       </div>
 
       {/* Cull Readiness */}
@@ -117,7 +132,7 @@ export default function DashboardScreen() {
 
       {/* Size & Conditions */}
       <div className="grid grid-cols-[1.6fr_1fr] gap-3.5 mb-3.5">
-        <Panel title="Size Category Snapshot — Today" pill={<Pill>Live from last upload</Pill>}>
+        <Panel title="Size Category Snapshot — Today" pill={<Pill>Live from Supabase</Pill>}>
           {SIZE_BANDS.map((b, i) => (
             <div key={i} className="flex items-center gap-2.5 mb-2">
               <span className="font-mono-ibm text-[10px] text-ct-text3 w-[58px]">{b.range}</span>
@@ -128,17 +143,21 @@ export default function DashboardScreen() {
             </div>
           ))}
         </Panel>
-        <Panel title="Active Conditions" pill={<Pill variant="orange">187 crocs</Pill>}>
-          {CONDITIONS.filter(c => cc[c.code]).sort((a, b) => (cc[b.code] || 0) - (cc[a.code] || 0)).map(c => (
-            <div key={c.code} className="flex items-center gap-2.5 py-1">
-              <span className="font-mono-ibm text-[10px] w-7" style={{ color: `hsl(var(${c.colorVar}))` }}>{c.code}</span>
-              <span className="text-xs text-ct-text2 flex-1">{c.name}</span>
-              <div className="w-[110px] h-1.5 bg-surface-3 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm" style={{ width: `${(cc[c.code] || 0) / maxC * 100}%`, background: `hsl(var(${c.colorVar}))` }} />
+        <Panel title="Active Conditions" pill={<Pill variant="orange">{totalCondFlags} crocs</Pill>}>
+          {totalCondFlags === 0 ? (
+            <div className="text-xs text-ct-text3 text-center py-5">No condition flags in current dataset</div>
+          ) : (
+            conditionDefs?.filter(c => cc[c.code]).sort((a, b) => (cc[b.code] || 0) - (cc[a.code] || 0)).map(c => (
+              <div key={c.code} className="flex items-center gap-2.5 py-1">
+                <span className="font-mono-ibm text-[10px] w-7" style={{ color: `hsl(var(${c.color_var}))` }}>{c.code}</span>
+                <span className="text-xs text-ct-text2 flex-1">{c.name}</span>
+                <div className="w-[110px] h-1.5 bg-surface-3 rounded-sm overflow-hidden">
+                  <div className="h-full rounded-sm" style={{ width: `${(cc[c.code] || 0) / maxC * 100}%`, background: `hsl(var(${c.color_var}))` }} />
+                </div>
+                <span className="font-mono-ibm text-[10px] text-ct-text3 w-[26px] text-right">{cc[c.code] || 0}</span>
               </div>
-              <span className="font-mono-ibm text-[10px] text-ct-text3 w-[26px] text-right">{cc[c.code] || 0}</span>
-            </div>
-          ))}
+            ))
+          )}
         </Panel>
       </div>
 
@@ -153,11 +172,11 @@ export default function DashboardScreen() {
         </Panel>
         <Panel title="Recent Activity">
           {[
-            { col: 'bg-ct-accent', text: 'Tag #5919 moved GH1 E-12 → F-14. Size 36 cm.', time: '2h ago' },
-            { col: 'bg-ct-warn', text: 'Tag #5038 flagged DS · Belly · Severity 2.', time: '3h ago' },
-            { col: 'bg-ct-danger', text: 'GH2 Row J: 3 crocs flagged MN — feeder check triggered.', time: '5h ago' },
-            { col: 'bg-ct-cull', text: 'Batch cull ×94 completed. CITIES tags issued.', time: '1d ago' },
-            { col: 'bg-ct-info', text: 'CSV uploaded — 910 records, 0 errors.', time: '1d ago' },
+            { col: 'bg-ct-accent', text: 'Live data connected — Supabase wired.', time: 'Now' },
+            { col: 'bg-ct-info', text: `${allCrocs.length} records loaded. ${occupied.length} with measurements.`, time: 'Now' },
+            { col: 'bg-ct-accent', text: `GH1: ${gh1Count} crocs · GH2: ${gh2Count} crocs.`, time: 'Mar 2026' },
+            { col: 'bg-ct-warn', text: `${allCrocs.length - occupied.length} empty slots across both pens.`, time: 'Mar 2026' },
+            { col: 'bg-ct-cull', text: 'Condition codes ready for next inspection upload.', time: 'Pending' },
           ].map((a, i) => (
             <div key={i} className="flex gap-3 py-2.5 border-b border-border last:border-b-0 items-start">
               <div className={`w-[7px] h-[7px] rounded-full mt-1.5 flex-shrink-0 ${a.col}`} />

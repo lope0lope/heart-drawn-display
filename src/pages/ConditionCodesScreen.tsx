@@ -1,6 +1,8 @@
-import { CONDITIONS } from '@/data/mockData';
+import { useConditionCodes } from '@/hooks/useCrocs';
 
 export default function ConditionCodesScreen() {
+  const { data: conditionDefs, isLoading } = useConditionCodes();
+
   const locs = [
     { code: 'Collar', desc: 'Collar / neck area' },
     { code: 'Chest', desc: 'Upper chest / throat belly' },
@@ -22,33 +24,13 @@ export default function ConditionCodesScreen() {
     { label: '4', col: 'text-ct-danger', bg: 'bg-[rgba(192,57,43,.2)]', meaning: 'Remove from pen immediately. Replace with new croc. Defect is disqualifying.' },
   ];
 
-  const liveDefs = [
-    ['BA', 'Bacteria', 'Bacterial infection on skin surface', true],
-    ['B', 'Bone', 'Bone protrusion / abnormality', true],
-    ['DS', 'Double Scale', 'Duplicate scale formation — skin defect', true],
-    ['HS', 'Healed Scar', 'Old scar — skin quality reduction', true],
-    ['PI', 'Pix', 'Pixel-like skin marking', true],
-    ['PO', 'Pox', 'Pox lesions on skin', true],
-    ['S', 'Scratches', 'Surface scratches from handling/fighting', true],
-    ['TH', 'Teeth Holes', 'Puncture wounds from biting', true],
-    ['R', 'Rash', 'Skin rash / irritation', true],
-    ['W', 'Wrinkles', 'Excessive skin wrinkling', true],
-    ['BS', 'Brown Spot', 'Discolouration — brown patches', true],
-    ['SS', 'Scale Slip', 'Scales separating from body', true],
-    ['KH', 'Knife Hole', 'Cut or puncture — handling damage', true],
-    ['FF', 'Fungus', 'Fungal growth on skin', true],
-    ['PD', 'Pattern Defect', 'Irregular scale pattern', true],
-    ['U', 'Umbilical', 'Umbilical area scarring', true],
-    ['C', 'Creasing', 'Skin fold / crease lines', true],
-    ['TB', 'Tail Biting', 'Tail damage from inter-croc biting', false],
-    ['OP', 'Orange Peal', 'Orange-peal textured skin surface', false],
-  ] as const;
+  if (isLoading) return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading…</div>;
 
-  const hideDefs = liveDefs.filter(d => d[3]);
+  const liveDefs = conditionDefs?.filter(c => c.is_live) ?? [];
+  const hideDefs = conditionDefs?.filter(c => c.is_hide) ?? [];
 
   return (
     <div className="max-w-[1100px]">
-      {/* Explanation */}
       <div className="grid grid-cols-2 gap-3.5 mb-4">
         <div className="bg-[rgba(201,168,76,.07)] border-l-[3px] border-l-ct-accent px-3.5 py-2.5 rounded-r text-xs text-ct-text2 leading-relaxed">
           <strong>Live Defects</strong> — recorded on the living croc at each inspection. Tracked on the pen map and croc profile. Informs culling decisions and treatment holds.
@@ -58,7 +40,6 @@ export default function ConditionCodesScreen() {
         </div>
       </div>
 
-      {/* Locations & Severity */}
       <div className="grid grid-cols-2 gap-3.5 mb-4">
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border">
@@ -93,7 +74,6 @@ export default function ConditionCodesScreen() {
         </div>
       </div>
 
-      {/* Defect tables */}
       <div className="grid grid-cols-2 gap-3.5">
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
@@ -106,23 +86,20 @@ export default function ConditionCodesScreen() {
                 <tr>
                   <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Code</th>
                   <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Defect</th>
-                  <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Notes</th>
                   <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-center">In Hide?</th>
                 </tr>
               </thead>
               <tbody>
-                {liveDefs.map((d, i) => {
-                  const cond = CONDITIONS.find(c => c.code === d[0]);
-                  const col = cond ? `hsl(var(${cond.colorVar}))` : 'hsl(var(--ct-text3))';
+                {liveDefs.map((d) => {
+                  const col = `hsl(var(${d.color_var}))`;
                   return (
-                    <tr key={i} className="hover:bg-surface-2">
+                    <tr key={d.code} className="hover:bg-surface-2">
                       <td className="border border-border p-[7px_12px]">
-                        <span className="font-mono-ibm text-[11px] px-[5px] py-px rounded-sm" style={{ border: `1px solid ${col}`, color: col }}>{d[0]}</span>
+                        <span className="font-mono-ibm text-[11px] px-[5px] py-px rounded-sm" style={{ border: `1px solid ${col}`, color: col }}>{d.code}</span>
                       </td>
-                      <td className="border border-border p-[7px_12px] font-medium">{d[1]}</td>
-                      <td className="border border-border p-[7px_12px] text-ct-text3 text-[11px]">{d[2]}</td>
+                      <td className="border border-border p-[7px_12px] font-medium">{d.name}</td>
                       <td className="border border-border p-[7px_12px] text-center text-[13px]">
-                        {d[3] ? <span className="text-ct-good">✓</span> : <span className="text-ct-text3">—</span>}
+                        {d.is_hide ? <span className="text-ct-good">✓</span> : <span className="text-ct-text3">—</span>}
                       </td>
                     </tr>
                   );
@@ -143,20 +120,17 @@ export default function ConditionCodesScreen() {
                 <tr>
                   <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Code</th>
                   <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Defect</th>
-                  <th className="bg-surface-3 border border-border p-[7px_10px] font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase text-left">Notes on skin</th>
                 </tr>
               </thead>
               <tbody>
-                {hideDefs.map((d, i) => {
-                  const cond = CONDITIONS.find(c => c.code === d[0]);
-                  const col = cond ? `hsl(var(${cond.colorVar}))` : 'hsl(var(--ct-text3))';
+                {hideDefs.map((d) => {
+                  const col = `hsl(var(${d.color_var}))`;
                   return (
-                    <tr key={i} className="hover:bg-surface-2">
+                    <tr key={d.code} className="hover:bg-surface-2">
                       <td className="border border-border p-[7px_12px]">
-                        <span className="font-mono-ibm text-[11px] px-[5px] py-px rounded-sm" style={{ border: `1px solid ${col}`, color: col }}>{d[0]}</span>
+                        <span className="font-mono-ibm text-[11px] px-[5px] py-px rounded-sm" style={{ border: `1px solid ${col}`, color: col }}>{d.code}</span>
                       </td>
-                      <td className="border border-border p-[7px_12px] font-medium">{d[1]}</td>
-                      <td className="border border-border p-[7px_12px] text-ct-text3 text-[11px]">{d[2]}</td>
+                      <td className="border border-border p-[7px_12px] font-medium">{d.name}</td>
                     </tr>
                   );
                 })}
@@ -164,7 +138,7 @@ export default function ConditionCodesScreen() {
             </table>
             <div className="px-4 py-3.5 border-t border-border font-mono-ibm text-[10px] text-ct-text3 leading-[1.8]">
               ※ Skin defects share the same code list as live defects.<br />
-              Post-cull damage (e.g. knife marks) is logged using the same codes against the CITIES tag number. The skin record persists independently after culling.
+              Post-cull damage (e.g. knife marks) is logged using the same codes against the CITIES tag number.
             </div>
           </div>
         </div>
