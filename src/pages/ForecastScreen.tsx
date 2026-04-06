@@ -1,4 +1,5 @@
-import { penData, SIZE_BANDS, sizeBand, sizeBandColor, GROWTH_RATES, YTD_CULLED } from '@/data/mockData';
+import { useAllCrocs } from '@/hooks/useCrocs';
+import { SIZE_BANDS, sizeBand, sizeBandColor, GROWTH_RATES, YTD_CULLED, countSizeBands, getOccupied } from '@/lib/crocUtils';
 
 function advBadge(now: number, next: number, target: number, ytd: number) {
   const rem = target - ytd;
@@ -9,10 +10,22 @@ function advBadge(now: number, next: number, target: number, ytd: number) {
 }
 
 export default function ForecastScreen() {
-  const all = [...penData.GH1, ...penData.GH2].filter(c => c.occupied);
-  const now = [0, 0, 0, 0, 0, 0], next = [0, 0, 0, 0, 0, 0];
-  all.forEach(c => { const b = sizeBand(c.sizeCm!); if (b !== null) now[b]++; });
-  all.forEach(c => { const b = sizeBand(c.sizeCm!); if (b === null) return; const nb = sizeBand(c.sizeCm! + GROWTH_RATES[b]); if (nb !== null) next[nb]++; });
+  const { data: allCrocs, isLoading } = useAllCrocs();
+
+  if (isLoading || !allCrocs) {
+    return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading…</div>;
+  }
+
+  const occupied = getOccupied(allCrocs);
+  const now = countSizeBands(occupied);
+  const next = [0, 0, 0, 0, 0, 0];
+  occupied.forEach(c => {
+    if (!c.belly_cm) return;
+    const b = sizeBand(c.belly_cm);
+    if (b === null) return;
+    const nb = sizeBand(c.belly_cm + GROWTH_RATES[b]);
+    if (nb !== null) next[nb]++;
+  });
   const targets = SIZE_BANDS.map(b => b.target);
   const maxC = Math.max(...now, ...next, ...targets, 1);
 
@@ -26,7 +39,6 @@ export default function ForecastScreen() {
       </div>
 
       <div className="grid grid-cols-[1fr_330px] gap-4">
-        {/* Size Category Forecast */}
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Size Category Forecast</span>
@@ -70,9 +82,7 @@ export default function ForecastScreen() {
           ))}
         </div>
 
-        {/* Right column */}
         <div className="flex flex-col gap-3.5">
-          {/* AI Culling Advisory */}
           <div className="bg-surface border border-border rounded overflow-hidden">
             <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
               <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">AI Culling Advisory</span>
@@ -87,7 +97,6 @@ export default function ForecastScreen() {
             </div>
           </div>
 
-          {/* Monthly Cull Plan */}
           <div className="bg-surface border border-border rounded overflow-hidden">
             <div className="px-[18px] py-3 border-b border-border">
               <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Month-by-Month Cull Plan</span>
@@ -112,7 +121,6 @@ export default function ForecastScreen() {
             </div>
           </div>
 
-          {/* Growth Rates */}
           <div className="bg-surface border border-border rounded overflow-hidden">
             <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
               <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Avg Growth Rates</span>
@@ -130,7 +138,6 @@ export default function ForecastScreen() {
         </div>
       </div>
 
-      {/* YTD Targets */}
       <div className="mt-3.5 bg-surface border border-border rounded overflow-hidden">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Year-to-Date Cull vs Annual Target</span>
