@@ -1,8 +1,12 @@
 import { useState } from 'react';
+import { exportLiveCrocs, exportInspectionHistory } from '@/lib/exportData';
+import { toast } from 'sonner';
 
 export default function DataUploadScreen() {
   const [status, setStatus] = useState<'awaiting' | 'processing' | 'done'>('awaiting');
   const [fileName, setFileName] = useState('');
+  const [penFilter, setPenFilter] = useState<string>('');
+  const [exporting, setExporting] = useState<string | null>(null);
 
   const uploadHistory = [
     { name: 'inspection_GH1_Q2-2026-C2.csv', records: 910, date: '18 Apr 2026', ok: true },
@@ -18,9 +22,74 @@ export default function DataUploadScreen() {
     setTimeout(() => setStatus('done'), 700);
   };
 
+  const handleExport = async (type: 'live' | 'history') => {
+    const key = type;
+    setExporting(key);
+    try {
+      const filter = penFilter || undefined;
+      const count = type === 'live'
+        ? await exportLiveCrocs(filter)
+        : await exportInspectionHistory(filter);
+      toast.success(`Exported ${count} records`);
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="grid grid-cols-2 gap-4">
       <div className="flex flex-col gap-3.5">
+        {/* Data Export */}
+        <div className="bg-surface border border-border rounded overflow-hidden">
+          <div className="px-[18px] py-3 border-b border-border">
+            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Data Export</span>
+          </div>
+          <div className="px-[18px] py-4 flex flex-col gap-3">
+            <div className="text-xs text-ct-text2 mb-1">Download live or historical data as CSV for auditing or re-upload.</div>
+            <div>
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-1.5">Filter by pen</div>
+              <div className="flex gap-2">
+                {['', 'GH1', 'GH2'].map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPenFilter(p)}
+                    className={`px-3 py-1.5 font-mono-ibm text-[11px] rounded-sm border cursor-pointer transition-all ${
+                      penFilter === p
+                        ? 'bg-ct-accent text-background border-ct-accent'
+                        : 'bg-surface-2 text-ct-text2 border-border hover:border-ct-accent'
+                    }`}
+                  >
+                    {p || 'All'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => handleExport('live')}
+                disabled={exporting !== null}
+                className="flex-1 bg-ct-accent text-background px-[18px] py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:bg-ct-accent2"
+              >
+                {exporting === 'live' ? 'Exporting…' : '↓ Live Croc Data'}
+              </button>
+              <button
+                onClick={() => handleExport('history')}
+                disabled={exporting !== null}
+                className="flex-1 bg-transparent text-ct-accent border border-border px-[18px] py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:border-ct-accent"
+              >
+                {exporting === 'history' ? 'Exporting…' : '↓ Inspection History'}
+              </button>
+            </div>
+            <div className="font-mono-ibm text-[10px] text-ct-text3 bg-surface-2 p-2.5 rounded-sm border border-border leading-[1.8]">
+              <strong className="text-ct-text2">Live data</strong> — current croc records (tag, pen, size, grade, conditions)<br />
+              <strong className="text-ct-text2">History</strong> — all inspection measurements over time for growth auditing<br />
+              <span className="text-ct-accent">CSV format matches the upload template</span> — edit &amp; re-import
+            </div>
+          </div>
+        </div>
+
         {/* Upload Zone */}
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border">
