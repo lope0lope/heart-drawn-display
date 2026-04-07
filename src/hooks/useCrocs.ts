@@ -64,6 +64,31 @@ export function useConditionCodes() {
   });
 }
 
+export interface InspectionRecord {
+  id: number;
+  croc_id: number;
+  inspection_date: string;
+  belly_cm: number | null;
+  condition_codes: string[];
+}
+
+export function useInspectionHistory(crocId?: number) {
+  return useQuery({
+    queryKey: ['inspections', crocId],
+    queryFn: async () => {
+      if (!crocId) return [];
+      const { data, error } = await supabase
+        .from('inspections')
+        .select('*')
+        .eq('croc_id', crocId)
+        .order('inspection_date', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as InspectionRecord[];
+    },
+    enabled: !!crocId,
+  });
+}
+
 export function usePenMeta(penId: string) {
   return useQuery({
     queryKey: ['pen_meta', penId],
