@@ -28,7 +28,10 @@ export function useFeedRecords(penId?: string, cycle?: string) {
       if (penId && penId !== 'ALL') query = query.eq('pen_id', penId);
       if (cycle) query = query.eq('cycle', cycle);
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        console.warn('feed_records query failed (table may not exist):', error.message);
+        return [] as FeedRecord[];
+      }
       return (data ?? []) as FeedRecord[];
     },
   });
@@ -42,7 +45,10 @@ export function useFeedCycles() {
         .from('feed_records')
         .select('cycle, recorded_date')
         .order('recorded_date', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        console.warn('feed_cycles query failed:', error.message);
+        return [] as string[];
+      }
       const unique = [...new Set((data ?? []).map(d => d.cycle))];
       return unique;
     },
@@ -58,7 +64,10 @@ export function useUploadLogs() {
         .select('*')
         .order('uploaded_at', { ascending: false })
         .limit(20);
-      if (error) throw error;
+      if (error) {
+        console.warn('upload_logs query failed:', error.message);
+        return [] as UploadLog[];
+      }
       return (data ?? []) as UploadLog[];
     },
   });
