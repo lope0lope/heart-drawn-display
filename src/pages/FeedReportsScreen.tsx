@@ -1,22 +1,44 @@
 import { useState } from 'react';
-import { FEED_DATA } from '@/data/mockData';
+import { useFeedRecords, useFeedCycles } from '@/hooks/useFeedData';
 
 export default function FeedReportsScreen() {
   const [penSel, setPenSel] = useState('GH1');
-  const [cycleSel, setCycleSel] = useState('Cycle 3 (Feb–Apr 2026)');
-  const cycleKey = cycleSel.startsWith('Cycle 3') ? 'cycle3_kg' : cycleSel.startsWith('Cycle 2') ? 'cycle2_kg' : 'cycle1_kg' as const;
+  const [cycleSel, setCycleSel] = useState('Cycle 3');
+  const { data: cycles } = useFeedCycles();
+  const { data: currentData, isLoading } = useFeedRecords(penSel, cycleSel);
 
-  const pens = penSel === 'ALL' ? ['GH1', 'GH2'] : [penSel];
-  const allLines = pens.flatMap(p => FEED_DATA[p].lines.map(l => ({ ...l, pen: p })));
-  const totalFeed = allLines.reduce((s, l) => s + l[cycleKey], 0);
+  // Get previous cycle name for delta calculation
+  const cycleNum = parseInt(cycleSel.replace(/\D/g, '')) || 0;
+  const prevCycleName = cycleNum > 1 ? `Cycle ${cycleNum - 1}` : null;
+  const { data: prevData } = useFeedRecords(penSel, prevCycleName ?? undefined);
+
+  const allLines = (currentData ?? []).map(r => ({
+    pen: r.pen_id,
+    line: r.line,
+    crocs: r.croc_count ?? 0,
+    feed_kg: Number(r.feed_kg),
+  }));
+
+  const totalFeed = allLines.reduce((s, l) => s + l.feed_kg, 0);
   const totalCrocs = allLines.reduce((s, l) => s + l.crocs, 0);
   const avgPerCroc = totalCrocs > 0 ? (totalFeed / totalCrocs * 1000) : 0;
-  const maxLine = Math.max(...allLines.map(l => l[cycleKey]), 1);
-  const highestLine = allLines.reduce((a, b) => b[cycleKey] > a[cycleKey] ? b : a);
+  const maxLine = Math.max(...allLines.map(l => l.feed_kg), 1);
+  const highestLine = allLines.length > 0
+    ? allLines.reduce((a, b) => b.feed_kg > a.feed_kg ? b : a)
+    : { pen: '-', line: '-', feed_kg: 0 };
 
-  const months = penSel === 'ALL'
-    ? FEED_DATA.GH1.monthly.map((m, i) => ({ month: m.month, kg: m.kg + FEED_DATA.GH2.monthly[i].kg }))
-    : FEED_DATA[penSel].monthly;
+  // Build prev lookup
+  const prevLookup = new Map((prevData ?? []).map(r => [`${r.pen_id}-${r.line}`, Number(r.feed_kg)]));
+
+  // Monthly totals - aggregate all cycles by recorded_date
+  const { data: allFeedData } = useFeedRecords(penSel);
+  const monthlyMap = new Map<string, number>();
+  for (const r of allFeedData ?? []) {
+    const d = new Date(r.recorded_date);
+    const key = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + Number(r.feed_kg));
+  }
+  const months = [...monthlyMap.entries()].map(([month, kg]) => ({ month, kg }));
   const maxM = Math.max(...months.map(m => m.kg), 1);
 
   const cullData = [
@@ -24,6 +46,10 @@ export default function FeedReportsScreen() {
     { batch: '5601–6200', culled: 68, avgCycles: 3.8, avgFeedPerCycle_kg: 2.6 },
     { batch: '6201–6800', culled: 42, avgCycles: 3.5, avgFeedPerCycle_kg: 2.5 },
   ].map(d => ({ ...d, totalEst_kg: +(d.avgCycles * d.avgFeedPerCycle_kg).toFixed(1) }));
+
+  if (isLoading) {
+    return <div className="text-center py-10 text-ct-text3 font-mono-ibm text-xs">Loading feed data…</div>;
+  }
 
   return (
     <div>
@@ -36,9 +62,16 @@ export default function FeedReportsScreen() {
           <option value="GH1">GH1</option><option value="GH2">GH2</option><option value="ALL">All Pens</option>
         </select>
         <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none" value={cycleSel} onChange={e => setCycleSel(e.target.value)}>
-          <option>Cycle 3 (Feb–Apr 2026)</option><option>Cycle 2 (Dec 2025–Feb 2026)</option><option>Cycle 1 (Oct–Dec 2025)</option>
+          {(cycles ?? ['Cycle 3', 'Cycle 2', 'Cycle 1']).map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
-        <button className="ml-auto bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] rounded-sm cursor-pointer hover:border-ct-accent hover:bg-surface-2">⎙ Print Report</button>
+        <button
+          className="ml-auto bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] rounded-sm cursor-pointer hover:border-ct-accent hover:bg-surface-2"
+          onClick={() => window.print()}
+        >
+          ⎙ Print Report
+        </button>
       </div>
 
       {/* KPIs */}
@@ -47,7 +80,7 @@ export default function FeedReportsScreen() {
           { label: 'Total Feed (Cycle)', value: `${totalFeed.toLocaleString()} kg`, sub: 'All lines combined' },
           { label: 'Avg per Crocodile', value: `${avgPerCroc.toFixed(0)} g`, sub: 'Per 2-month cycle', cls: 'info' },
           { label: 'Total Crocodiles', value: totalCrocs.toLocaleString(), sub: 'Across selected pens' },
-          { label: 'Highest Feed Line', value: `${highestLine.pen} — Row ${highestLine.line}`, sub: `${Math.max(...allLines.map(l => l[cycleKey]))} kg`, cls: 'warn' },
+          { label: 'Highest Feed Line', value: `${highestLine.pen} — Row ${highestLine.line}`, sub: `${highestLine.feed_kg} kg`, cls: 'warn' },
         ].map((k, i) => (
           <div key={i} className="bg-surface border border-border rounded p-4 relative overflow-hidden">
             <div className={`absolute top-0 left-0 right-0 h-0.5 ${k.cls === 'warn' ? 'bg-ct-warn' : k.cls === 'info' ? 'bg-ct-info' : 'bg-ct-accent'}`} />
@@ -62,7 +95,7 @@ export default function FeedReportsScreen() {
         {/* Feed Per Line */}
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
-            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Feed Per Pen Line — Current Cycle</span>
+            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Feed Per Pen Line — {cycleSel}</span>
             <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">kg · avg per croc</span>
           </div>
           <div className="px-[18px] py-4">
@@ -70,10 +103,9 @@ export default function FeedReportsScreen() {
               <span>Line</span><span>Crocs</span><span>Feed</span><span>Avg/Croc</span><span>vs Prev</span>
             </div>
             {allLines.map((l, i) => {
-              const avg = (l[cycleKey] / l.crocs * 1000).toFixed(0);
-              const prevKey = cycleKey === 'cycle3_kg' ? 'cycle2_kg' : cycleKey === 'cycle2_kg' ? 'cycle1_kg' : null;
-              const prevVal = prevKey ? (l as any)[prevKey] as number : 0;
-              const delta = prevKey ? ((l[cycleKey] - prevVal) / prevVal * 100) : null;
+              const avg = l.crocs > 0 ? (l.feed_kg / l.crocs * 1000).toFixed(0) : '—';
+              const prevVal = prevLookup.get(`${l.pen}-${l.line}`);
+              const delta = prevVal ? ((l.feed_kg - prevVal) / prevVal * 100) : null;
               const col = delta === null ? 'text-ct-text3' : delta > 0 ? 'text-ct-good' : delta < -5 ? 'text-ct-danger' : 'text-ct-warn';
               const isLow = l.line === 'J';
               return (
@@ -82,9 +114,9 @@ export default function FeedReportsScreen() {
                   <span className="text-[11px] text-ct-text2">{l.crocs}</span>
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 h-[7px] bg-surface-3 rounded-sm overflow-hidden">
-                      <div className={`h-full rounded-sm ${isLow ? 'bg-ct-danger' : 'bg-ct-accent'}`} style={{ width: `${l[cycleKey] / maxLine * 100}%` }} />
+                      <div className={`h-full rounded-sm ${isLow ? 'bg-ct-danger' : 'bg-ct-accent'}`} style={{ width: `${l.feed_kg / maxLine * 100}%` }} />
                     </div>
-                    <span className="font-mono-ibm text-[10px] text-ct-text2 min-w-[52px]">{l[cycleKey]} kg</span>
+                    <span className="font-mono-ibm text-[10px] text-ct-text2 min-w-[52px]">{l.feed_kg} kg</span>
                   </div>
                   <span className="font-mono-ibm text-[10px] text-ct-text2">{avg} g</span>
                   <span className={`font-mono-ibm text-[10px] ${col}`}>{delta === null ? '—' : delta > 0 ? `↑ ${delta.toFixed(1)}%` : `↓ ${Math.abs(delta).toFixed(1)}%`}</span>
