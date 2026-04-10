@@ -1,44 +1,78 @@
-# CrocTrack — Live Data Integration Plan
 
-## Overview
 
-We'll set up Supabase, not lovable cloud but rather superbase directly as the backend, import your Excel data, and wire each screen to real data. Here's the phased approach:
+## Completing CrocTrack — Remaining Work
 
----
+### Current Status
 
-## Phase 1: Database Setup
+**Wired to live Supabase data:** Dashboard, Pen Map, Croc Profiles (with growth history), Condition Codes, Forecast, Analytics, Data Export (CSV downloads).
 
-**Parse your Excel file** to understand the data structure (columns, sheets, relationships).
+**Still using mock data or non-functional:**
 
-**Create database tables** based on your data. Likely tables:
-
-- `pens` — pen identifiers (GH1, GH2, etc.)
-- `crocs` — individual croc records (tag_id, pen, row, col, size_cm, condition_codes, readiness, grade, batch)
-- `inspections` — inspection history per croc (date, measurements, conditions found)
-- `feed_records` — feed consumption per line/cycle
-- `condition_codes` — reference table for all condition definitions
-
-**Set up RLS policies** for data access.
-
-## Phase 2: Data Import
-
-**Import your Excel data** into the database tables using a script. We'll parse the XLSX and insert rows via Supabase.
-
-## Phase 3: Connect Screens to Live Data (one at a time)
-
-Replace mock data with real queries, screen by screen:
-
-1. **Dashboard** — summary stats, counts, condition breakdowns from `crocs` table
-2. **Pen Map** — grid populated from `crocs` where pen = selected pen
-3. **Croc Profiles** — individual croc lookup by tag_id with inspection history
-4. **Condition Codes** — driven by `condition_codes` table (editable)
-5. **Feed Reports** — consumption data from `feed_records`
-6. **Forecasting** — size band distribution + growth projections from croc measurements
-7. **Analytics** — query builder hitting real data
-8. **Data Upload** — actual CSV parsing and insertion into the database
+1. **Feed Reports** — entirely driven by hardcoded `FEED_DATA` in `mockData.ts`
+2. **Data Upload** — upload zone is cosmetic (fakes processing with a `setTimeout`); no CSV parsing or Supabase insertion
+3. **Topbar Search** — input exists but does nothing
+4. **Print Report** button on Feed Reports — no implementation
 
 ---
 
-## Recommended Next Step
+### Plan to Complete
 
-**Upload your Excel file** so I can parse it, understand the exact column structure, and design the database schema to match. Then we'll set up Lovable Cloud and start building.
+#### 1. Working Data Upload (CSV Import)
+- Parse uploaded CSV client-side (using `papaparse` library)
+- Map columns to the `crocs` / `inspections` schema
+- Show a real data preview table and run validation (duplicate tags, missing columns, out-of-range values)
+- On "Confirm Import", upsert records into Supabase
+- Store upload history in a new `upload_logs` table and display real history
+- Accept both `.csv` and `.xlsx` files using the SheetJS library already available
+
+#### 2. Feed Reports — Live Data
+- Create a `feed_records` table in Supabase (`pen_id`, `line`, `cycle`, `feed_kg`, `recorded_date`)
+- Seed it with the current mock values so the screen isn't empty
+- Rewrite `FeedReportsScreen.tsx` to query `feed_records` via a new `useFeedData` hook
+- Remove `FEED_DATA` from `mockData.ts`
+
+#### 3. Global Search (Topbar)
+- Wire the search input to navigate to Croc Profiles and auto-search by tag number or ID
+- Support pen filtering (e.g. typing "GH2 B5" jumps to that pen slot)
+
+#### 4. Cleanup
+- Remove unused mock data generators (`genCrocData`, `penData`) from `mockData.ts`
+- Remove duplicate utility functions (size band helpers exist in both `mockData.ts` and `crocUtils.ts`)
+- Remove hardcoded upload history and validation report
+
+---
+
+### Technical Details
+
+**New database table:**
+```sql
+create table public.feed_records (
+  id serial primary key,
+  pen_id text not null,
+  line text not null,
+  cycle text not null,
+  feed_kg numeric not null,
+  croc_count int,
+  recorded_date date not null
+);
+
+create table public.upload_logs (
+  id serial primary key,
+  filename text not null,
+  record_count int not null,
+  status text not null,
+  warnings int default 0,
+  uploaded_at timestamptz default now()
+);
+```
+
+**New dependencies:** `papaparse` for CSV parsing (lightweight, well-supported).
+
+**Files to create/edit:**
+- Create `src/hooks/useFeedData.ts`
+- Create migration for `feed_records` and `upload_logs` tables
+- Rewrite `src/pages/FeedReportsScreen.tsx` (swap mock for hook)
+- Rewrite `src/pages/DataUploadScreen.tsx` (real parsing, validation, Supabase insert)
+- Update `src/components/Topbar.tsx` (wire search)
+- Clean up `src/data/mockData.ts`
+
