@@ -10,8 +10,6 @@ export const SIZE_BANDS = [
 ];
 
 export const SIZE_BAND_COLORS = ['#4a6fa5', '#4a90b8', '#c9a84c', '#d4892a', '#4caf50', '#6b3fa0'];
-export const GROWTH_RATES = [5.2, 4.8, 4.5, 4.1, 3.6, 2.9];
-export const YTD_CULLED = [88, 142, 170, 210, 98, 42];
 
 export function sizeBand(cm: number): number | null {
   if (cm < 25) return null;
@@ -38,7 +36,6 @@ export function buildPenGrid(crocs: CrocRecord[]) {
   const lines = [...new Set(crocs.map(c => c.line))].sort();
   const maxSlot = Math.max(...crocs.map(c => c.pen_slot), 0);
   
-  // Build a lookup: line -> slot -> croc
   const grid: Map<string, Map<number, CrocRecord>> = new Map();
   for (const c of crocs) {
     if (!grid.has(c.line)) grid.set(c.line, new Map());
