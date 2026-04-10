@@ -12,7 +12,7 @@ export interface CullRecord {
   created_at: string;
 }
 
-/** Fetch all cull records */
+/** Fetch all cull records — returns empty array if table doesn't exist yet */
 export function useCullRecords() {
   return useQuery({
     queryKey: ['cull_records'],
@@ -21,7 +21,11 @@ export function useCullRecords() {
         .from('cull_records')
         .select('*')
         .order('cull_date', { ascending: false });
-      if (error) throw error;
+      if (error) {
+        // Table may not exist yet
+        console.warn('cull_records query failed (table may not exist):', error.message);
+        return [] as CullRecord[];
+      }
       return (data ?? []) as CullRecord[];
     },
   });
@@ -49,18 +53,19 @@ export function useGrowthRates() {
   return useQuery({
     queryKey: ['growth_rates'],
     queryFn: async () => {
-      // Fetch all inspections ordered by croc and date
       const { data, error } = await supabase
         .from('inspections')
         .select('croc_id, belly_cm, inspection_date')
         .not('belly_cm', 'is', null)
         .order('croc_id')
         .order('inspection_date', { ascending: true });
-      if (error) throw error;
+      
+      // Default growth rates if no inspection data available
+      const defaults = [5.2, 4.8, 4.5, 4.1, 3.6, 2.9];
+      if (error || !data || data.length === 0) return defaults;
 
-      // Group by croc_id, compute deltas between consecutive inspections
       const deltas: number[][] = [[], [], [], [], [], []];
-      const rows = data ?? [];
+      const rows = data;
       
       let i = 0;
       while (i < rows.length) {
@@ -79,8 +84,6 @@ export function useGrowthRates() {
         }
       }
 
-      // Average per band, fallback to reasonable defaults if no data
-      const defaults = [5.2, 4.8, 4.5, 4.1, 3.6, 2.9];
       return deltas.map((arr, idx) =>
         arr.length >= 3
           ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10
@@ -90,7 +93,7 @@ export function useGrowthRates() {
   });
 }
 
-/** Compute cull readiness from live data (replaces CULL_READINESS) */
+/** Compute cull readiness from live data */
 export function useCullReadiness() {
   const { data: allCrocs } = useAllCrocs();
   const { data: growthRates } = useGrowthRates();
@@ -98,11 +101,8 @@ export function useCullReadiness() {
   if (!allCrocs || !growthRates) return null;
 
   const occupied = getOccupied(allCrocs);
-  const now = countSizeBands(occupied);
   const rates = growthRates;
 
-  // "Worker" count = crocs in the band NOW that are above the midpoint
-  // "AI" count = model projection including growth + condition clearance
   const horizons = [
     { horizon: 'Now', label: 'Cull immediately', color: 'ct-good' },
     { horizon: 'Next Cycle', label: 'Ready in ~2 months', color: 'ct-info' },
@@ -110,27 +110,23 @@ export function useCullReadiness() {
     { horizon: '+3 Cycles', label: 'Ready in ~6 months', color: 'ct-text2' },
   ];
 
-  // Simulate: at each horizon, project how many crocs move up into cull-ready sizes
-  // "Cull ready" = size bands 3-5 (35 cm+)
   const results = horizons.map((h, hIdx) => {
     let workerCount = 0;
     let aiCount = 0;
 
     for (const c of occupied) {
       if (!c.belly_cm) continue;
-      const projected = c.belly_cm + rates[sizeBand(c.belly_cm) ?? 0] * hIdx;
-      const projBand = sizeBand(projected);
+      const currentBand = sizeBand(c.belly_cm) ?? 0;
+      const projected = c.belly_cm + rates[currentBand] * hIdx;
       
-      // Worker: simple threshold — belly >= 35 cm and no serious conditions
       if (projected >= 35) workerCount++;
       
-      // AI: more nuanced — accounts for conditions that might delay cull
       if (projected >= 35) {
         const hasBlockingCondition = c.condition_codes.some(code => 
           ['MN', 'DS', 'IN'].includes(code)
         );
         if (!hasBlockingCondition) aiCount++;
-        else if (hIdx >= 2) aiCount++; // assume healed after 2 cycles
+        else if (hIdx >= 2) aiCount++;
       }
     }
 
