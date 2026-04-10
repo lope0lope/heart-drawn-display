@@ -15,13 +15,8 @@ export default function AnalyticsScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('heatmap');
   const [queryApplied, setQueryApplied] = useState(false);
 
-  if (isLoading || !allCrocs) {
-    return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading…</div>;
-  }
+  const occupied = useMemo(() => getOccupied(allCrocs ?? []), [allCrocs]);
 
-  const occupied = getOccupied(allCrocs);
-
-  // Filter logic
   const filteredCrocs = useMemo(() => {
     if (!queryApplied || !filterValue) return occupied;
     return occupied.filter(c => {
@@ -56,9 +51,24 @@ export default function AnalyticsScreen() {
     });
   }, [occupied, filterField, filterOp, filterValue, queryApplied]);
 
-  const cc = countConditions(filteredCrocs);
+  const cc = useMemo(() => countConditions(filteredCrocs), [filteredCrocs]);
 
-  // Heatmap data — use GH1 from filtered set
+  const valueOptions = useMemo(() => {
+    switch (filterField) {
+      case 'Condition Code': return conditionDefs?.map(c => c.code) ?? [];
+      case 'Pen': return ['GH1', 'GH2'];
+      case 'Size Band': return ['0', '1', '2', '3', '4', '5'];
+      case 'Line': return [...new Set((allCrocs ?? []).map(c => c.line))].sort();
+      case 'Grade': return ['1', '2', '3', '4', '5'];
+      default: return [];
+    }
+  }, [filterField, conditionDefs, allCrocs]);
+
+  if (isLoading || !allCrocs) {
+    return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading…</div>;
+  }
+
+  // Heatmap data
   const gh1 = filteredCrocs.filter(c => c.pen_id === 'GH1');
   const lines = [...new Set(gh1.map(c => c.line))].sort();
   const maxSlot = Math.max(...gh1.map(c => c.pen_slot), 1);
@@ -70,7 +80,6 @@ export default function AnalyticsScreen() {
     lineSlotConds.set(key, c.condition_codes.length);
   });
 
-  // MN/DS analysis
   const mnByLine: Record<string, number> = {};
   const dsByLine: Record<string, number> = {};
   filteredCrocs.forEach(c => {
@@ -78,26 +87,8 @@ export default function AnalyticsScreen() {
     if (c.condition_codes.includes('DS')) dsByLine[c.line] = (dsByLine[c.line] || 0) + 1;
   });
 
-  // Filter value options
-  const valueOptions = useMemo(() => {
-    switch (filterField) {
-      case 'Condition Code': return conditionDefs?.map(c => c.code) ?? [];
-      case 'Pen': return ['GH1', 'GH2'];
-      case 'Size Band': return ['0', '1', '2', '3', '4', '5'];
-      case 'Line': return [...new Set(allCrocs.map(c => c.line))].sort();
-      case 'Grade': return ['1', '2', '3', '4', '5'];
-      default: return [];
-    }
-  }, [filterField, conditionDefs, allCrocs]);
-
-  const handleRun = () => {
-    setQueryApplied(true);
-  };
-
-  const handleClear = () => {
-    setQueryApplied(false);
-    setFilterValue('');
-  };
+  const handleRun = () => setQueryApplied(true);
+  const handleClear = () => { setQueryApplied(false); setFilterValue(''); };
 
   return (
     <div className="grid grid-cols-2 gap-3.5">
