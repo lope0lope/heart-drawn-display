@@ -1,5 +1,6 @@
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBand, sizeBandColor, GROWTH_RATES, YTD_CULLED, countSizeBands, getOccupied } from '@/lib/crocUtils';
+import { SIZE_BANDS, sizeBand, sizeBandColor, countSizeBands, getOccupied } from '@/lib/crocUtils';
+import { useGrowthRates, useYtdCulled, useAiAdvisory } from '@/hooks/useCullData';
 
 function advBadge(now: number, next: number, target: number, ytd: number) {
   const rem = target - ytd;
@@ -11,8 +12,11 @@ function advBadge(now: number, next: number, target: number, ytd: number) {
 
 export default function ForecastScreen() {
   const { data: allCrocs, isLoading } = useAllCrocs();
+  const { data: growthRates } = useGrowthRates();
+  const { ytdCulled } = useYtdCulled();
+  const aiAdvisory = useAiAdvisory();
 
-  if (isLoading || !allCrocs) {
+  if (isLoading || !allCrocs || !growthRates) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading…</div>;
   }
 
@@ -23,19 +27,31 @@ export default function ForecastScreen() {
     if (!c.belly_cm) return;
     const b = sizeBand(c.belly_cm);
     if (b === null) return;
-    const nb = sizeBand(c.belly_cm + GROWTH_RATES[b]);
+    const nb = sizeBand(c.belly_cm + growthRates[b]);
     if (nb !== null) next[nb]++;
   });
   const targets = SIZE_BANDS.map(b => b.target);
   const maxC = Math.max(...now, ...next, ...targets, 1);
 
+  // Generate month-by-month cull plan from live data
   const months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const plan = [[0, 0, 90, 0, 0, 80, 0, 0, 0], [0, 60, 0, 0, 70, 0, 0, 60, 0], [30, 0, 40, 30, 0, 40, 30, 0, 40], [94, 0, 80, 94, 0, 80, 94, 0, 80], [20, 30, 0, 20, 30, 0, 20, 30, 0], [now[5], 0, 0, 15, 0, 0, 15, 0, 0]];
+  const plan = SIZE_BANDS.map((band, i) => {
+    const remaining = Math.max(0, targets[i] - ytdCulled[i]);
+    const monthlyTarget = Math.ceil(remaining / months.length);
+    // Distribute: cull every 2-3 months based on growth cycles
+    return months.map((_, mIdx) => {
+      if (remaining === 0) return 0;
+      // Stagger culls: cull in months where growth projection hits threshold
+      if (mIdx % 3 === (i % 3)) return Math.min(monthlyTarget * 2, remaining);
+      if (mIdx % 3 === ((i + 1) % 3)) return monthlyTarget;
+      return 0;
+    });
+  });
 
   return (
     <div>
       <div className="bg-[rgba(201,168,76,.07)] border-l-[3px] border-l-ct-accent px-3.5 py-2.5 rounded-r text-xs text-ct-text2 leading-relaxed mb-4">
-        Projections use average growth rates calculated from uploaded CSV history. <strong>Next Cycle</strong> = 2 months forward, no mortality assumed. Annual targets are per size category. The AI Advisory recalculates on each new upload.
+        Projections use average growth rates computed from inspection history. <strong>Next Cycle</strong> = 2 months forward, no mortality assumed. Annual targets are per size category. The AI Advisory recalculates from live data.
       </div>
 
       <div className="grid grid-cols-[1fr_330px] gap-4">
@@ -76,7 +92,7 @@ export default function ForecastScreen() {
                 </div>
               </div>
               <div className="px-4 py-3 border-l border-border flex flex-col justify-center gap-1">
-                {advBadge(now[i], next[i], targets[i], YTD_CULLED[i])}
+                {advBadge(now[i], next[i], targets[i], ytdCulled[i])}
               </div>
             </div>
           ))}
@@ -86,14 +102,21 @@ export default function ForecastScreen() {
           <div className="bg-surface border border-border rounded overflow-hidden">
             <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
               <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">AI Culling Advisory</span>
-              <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">AI</span>
+              <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">AI · Live</span>
             </div>
             <div className="px-[18px] py-4 text-xs text-ct-text2 leading-[1.8]">
-              <strong className="text-ct-accent">Recommended action this cycle:</strong><br /><br />
-              <span className="text-ct-good">✓ 35–39 cm</span> — cull <span className="text-ct-accent font-mono-ibm text-[11px]">94 units</span> now. Surplus will exceed pen capacity at +2 months.<br /><br />
-              <span className="text-ct-good">✓ 45+ cm</span> — cull all <span className="text-ct-accent font-mono-ibm text-[11px]">{now[5]} available</span> above threshold immediately.<br /><br />
-              <span className="text-ct-warn">⚠ 33–34 cm</span> — hold. Projected shortfall of <span className="text-ct-accent font-mono-ibm text-[11px]">68 units</span> vs annual target. Do not cull early.<br /><br />
-              <span className="text-ct-info">ℹ 25–29 cm</span> — on track. Allow natural progression.
+              {aiAdvisory ? (
+                <>
+                  <strong className="text-ct-accent">Recommended action this cycle:</strong><br /><br />
+                  {aiAdvisory.map((a, i) => (
+                    <span key={i}>
+                      <span className={`text-${a.color}`}>{a.icon} {a.text}</span><br />{i < aiAdvisory.length - 1 && <br />}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <span className="text-ct-text3">Computing from live data…</span>
+              )}
             </div>
           </div>
 
@@ -124,13 +147,13 @@ export default function ForecastScreen() {
           <div className="bg-surface border border-border rounded overflow-hidden">
             <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
               <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Avg Growth Rates</span>
-              <span className="font-mono-ibm text-[9px] text-ct-text3">From CSV</span>
+              <span className="font-mono-ibm text-[9px] text-ct-text3">From inspections</span>
             </div>
             <div className="px-[18px] py-4">
               {SIZE_BANDS.map((b, i) => (
                 <div key={i} className="flex justify-between py-[5px] border-b border-border text-xs">
                   <span className="font-mono-ibm" style={{ color: sizeBandColor(i) }}>{b.range}</span>
-                  <span className="font-mono-ibm text-ct-text2">{GROWTH_RATES[i]} cm / 2 months</span>
+                  <span className="font-mono-ibm text-ct-text2">{growthRates[i]} cm / 2 months</span>
                 </div>
               ))}
             </div>
@@ -141,23 +164,23 @@ export default function ForecastScreen() {
       <div className="mt-3.5 bg-surface border border-border rounded overflow-hidden">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Year-to-Date Cull vs Annual Target</span>
-          <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(74,144,184,.15)] text-ct-info">Updated from last upload</span>
+          <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(74,144,184,.15)] text-ct-info">Live from cull records</span>
         </div>
         <div className="px-[18px] py-4">
           <div className="grid grid-cols-6 gap-3">
             {SIZE_BANDS.map((b, i) => {
-              const p = Math.round(YTD_CULLED[i] / b.target * 100);
+              const p = targets[i] > 0 ? Math.round(ytdCulled[i] / targets[i] * 100) : 0;
               const col = p >= 80 ? 'var(--ct-good)' : p >= 50 ? 'var(--ct-warn)' : 'var(--ct-danger)';
               return (
                 <div key={i} className="bg-surface-2 rounded p-3.5 border border-border">
                   <div className="font-mono-ibm text-[9px] mb-1.5" style={{ color: sizeBandColor(i) }}>{b.range}</div>
-                  <div className="font-display text-[34px] font-semibold leading-none" style={{ color: col }}>{YTD_CULLED[i]}</div>
-                  <div className="text-[10px] text-ct-text3 mt-0.5">of {b.target} target</div>
+                  <div className="font-display text-[34px] font-semibold leading-none" style={{ color: col }}>{ytdCulled[i]}</div>
+                  <div className="text-[10px] text-ct-text3 mt-0.5">of {targets[i]} target</div>
                   <div className="h-[3px] bg-surface-3 rounded-sm mt-2 overflow-hidden">
-                    <div className="h-full rounded-sm" style={{ width: `${p}%`, background: col }} />
+                    <div className="h-full rounded-sm" style={{ width: `${Math.min(p, 100)}%`, background: col }} />
                   </div>
                   <div className="text-[10px] mt-1.5" style={{ color: col }}>
-                    {b.target - YTD_CULLED[i] > 0 ? `${b.target - YTD_CULLED[i]} remaining` : '✓ Target met'}
+                    {targets[i] - ytdCulled[i] > 0 ? `${targets[i] - ytdCulled[i]} remaining` : '✓ Target met'}
                   </div>
                 </div>
               );

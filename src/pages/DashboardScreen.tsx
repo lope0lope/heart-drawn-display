@@ -1,6 +1,6 @@
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBand, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
-import { CULL_READINESS } from '@/data/mockData';
+import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
+import { useCullReadiness, useAiAdvisory } from '@/hooks/useCullData';
 
 function NoteBox({ children, variant }: { children: React.ReactNode; variant?: 'warn' | 'danger' }) {
   const borderColor = variant === 'warn' ? 'border-l-ct-warn' : variant === 'danger' ? 'border-l-ct-danger' : 'border-l-ct-accent';
@@ -33,14 +33,13 @@ function Panel({ title, pill, children }: { title: string; pill?: React.ReactNod
 
 function KPI({ label, value, sub, delta, variant }: { label: string; value: string; sub?: string; delta?: string; variant?: 'warn' | 'danger' | 'info' | 'cull' }) {
   const topColor = variant === 'warn' ? 'bg-ct-warn' : variant === 'danger' ? 'bg-ct-danger' : variant === 'info' ? 'bg-ct-info' : variant === 'cull' ? 'bg-ct-cull' : 'bg-ct-accent';
-  const isNeg = delta?.includes('↑') && variant;
   return (
     <div className="bg-surface border border-border rounded p-4 relative overflow-hidden">
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${topColor}`} />
       <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">{label}</div>
       <div className="font-display text-[38px] font-semibold text-ct-text leading-none">{value}</div>
       {sub && <div className="text-[11px] text-ct-text3 mt-1">{sub}</div>}
-      {delta && <div className={`font-mono-ibm text-[10px] mt-1 ${isNeg ? 'text-ct-danger' : 'text-ct-accent'}`}>{delta}</div>}
+      {delta && <div className={`font-mono-ibm text-[10px] mt-1 ${variant ? 'text-ct-' + variant : 'text-ct-accent'}`}>{delta}</div>}
     </div>
   );
 }
@@ -48,6 +47,8 @@ function KPI({ label, value, sub, delta, variant }: { label: string; value: stri
 export default function DashboardScreen() {
   const { data: allCrocs, isLoading } = useAllCrocs();
   const { data: conditionDefs } = useConditionCodes();
+  const cullReadiness = useCullReadiness();
+  const aiAdvisory = useAiAdvisory();
 
   if (isLoading || !allCrocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading live data…</div>;
@@ -65,13 +66,12 @@ export default function DashboardScreen() {
   const uniqueCondTypes = Object.keys(cc).length;
   const maxC = Math.max(...Object.values(cc), 1);
 
-  // Treatment = crocs with any condition code
   const inTreatment = occupied.filter(c => c.condition_codes.length > 0).length;
 
   return (
     <div>
       <NoteBox>
-        <strong>Inspection cycle opens in 14 days.</strong> Data loaded from Supabase — {allCrocs.length} records across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} condition flags active.` : 'No condition flags in current dataset.'} AI advisory will update from next upload.
+        <strong>Inspection cycle opens in 14 days.</strong> Data loaded from Supabase — {allCrocs.length} records across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} condition flags active.` : 'No condition flags in current dataset.'} AI advisory updates on each new upload.
       </NoteBox>
 
       <div className="grid grid-cols-3 gap-3.5 mb-5">
@@ -80,11 +80,11 @@ export default function DashboardScreen() {
         <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} condition types active`} variant="danger" />
       </div>
 
-      {/* Cull Readiness */}
+      {/* Cull Readiness — Live computed */}
       <div className="bg-surface border border-border rounded overflow-hidden mb-3.5">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Cull Readiness — Worker Assessment vs AI Suggestion</span>
-          <Pill>From last inspection upload</Pill>
+          <Pill>Computed from live data</Pill>
         </div>
         <div>
           <div className="grid grid-cols-4 border-b border-border">
@@ -96,12 +96,12 @@ export default function DashboardScreen() {
               </div>
             ))}
           </div>
-          {CULL_READINESS.map((r, i) => {
+          {(cullReadiness ?? []).map((r, i, arr) => {
             const diff = r.ai - r.worker;
             const varLabel = diff === 0 ? 'Aligned' : diff > 0 ? `AI +${diff} higher` : `Worker +${Math.abs(diff)} higher`;
             const varCol = Math.abs(diff) < 20 ? 'text-ct-good' : Math.abs(diff) < 60 ? 'text-ct-warn' : 'text-ct-danger';
             return (
-              <div key={i} className={`grid grid-cols-4 ${i < CULL_READINESS.length - 1 ? 'border-b border-border' : ''}`}>
+              <div key={i} className={`grid grid-cols-4 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                 <div className="px-[18px] py-3.5 border-r border-border">
                   <div className={`font-display text-[22px] font-semibold leading-none text-${r.color}`}>{r.horizon}</div>
                   <div className="font-mono-ibm text-[9px] text-ct-text3 mt-1">{r.label}</div>
@@ -124,8 +124,7 @@ export default function DashboardScreen() {
             );
           })}
           <div className="px-[18px] py-2.5 font-mono-ibm text-[9px] text-ct-text3 border-t border-border leading-[1.8]">
-            Worker readiness is captured per croc at inspection via the <span className="text-ct-accent">readiness</span> CSV column (values: <span className="text-ct-accent">now · next · +2 · +3</span>).
-            AI suggestion is derived from size band, growth rate, and condition clearance projections.
+            Worker readiness is projected from belly size ≥ 35 cm. AI suggestion additionally accounts for blocking conditions (MN, DS, IN) and recovery time.
           </div>
         </div>
       </div>
@@ -163,11 +162,20 @@ export default function DashboardScreen() {
 
       {/* AI Advisory & Activity */}
       <div className="grid grid-cols-[2fr_1fr] gap-3.5">
-        <Panel title="AI Advisory — This Month" pill={<Pill>AI</Pill>}>
+        <Panel title="AI Advisory — This Month" pill={<Pill>AI · Live</Pill>}>
           <div className="text-xs text-ct-text2 leading-[1.8]">
-            Based on current growth rates, you are <span className="text-ct-accent font-mono-ibm text-[11px]">on track</span> in 4 of 6 size categories.<br /><br />
-            <strong className="text-ct-warn">⚠ 33–34 cm shortfall.</strong> Projected 68 units below annual target. Hold this band — do not cull early.<br /><br />
-            <strong className="text-ct-accent">45+ cm surplus.</strong> Recommend scheduling a cull batch this cycle to avoid overcrowding.
+            {aiAdvisory ? (
+              <>
+                <strong className="text-ct-accent">Recommended actions this cycle:</strong><br /><br />
+                {aiAdvisory.map((a, i) => (
+                  <span key={i}>
+                    <span className={`text-${a.color}`}>{a.icon} {a.text}</span><br />{i < aiAdvisory.length - 1 && <br />}
+                  </span>
+                ))}
+              </>
+            ) : (
+              <span className="text-ct-text3">Computing advisory from live data…</span>
+            )}
           </div>
         </Panel>
         <Panel title="Recent Activity">
