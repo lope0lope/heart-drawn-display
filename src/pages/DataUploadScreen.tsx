@@ -1,30 +1,190 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { exportLiveCrocs, exportInspectionHistory } from '@/lib/exportData';
+import { useUploadLogs } from '@/hooks/useFeedData';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
+
+interface ParsedRow {
+  tag: string;
+  pen_id: string;
+  line: string;
+  pen_slot: number;
+  belly_cm: number | null;
+  grade: number | null;
+  condition_codes: string[];
+  inspection_date: string;
+}
+
+interface ValidationResult {
+  ok: boolean;
+  text: string;
+}
 
 export default function DataUploadScreen() {
-  const [status, setStatus] = useState<'awaiting' | 'processing' | 'done'>('awaiting');
-  const [fileName, setFileName] = useState('');
   const [penFilter, setPenFilter] = useState<string>('');
   const [exporting, setExporting] = useState<string | null>(null);
+  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const [fileName, setFileName] = useState('');
+  const [validations, setValidations] = useState<ValidationResult[]>([]);
+  const [importing, setImporting] = useState(false);
+  const { data: uploadHistory, refetch: refetchLogs } = useUploadLogs();
 
-  const uploadHistory = [
-    { name: 'inspection_GH1_Q2-2026-C2.csv', records: 910, date: '18 Apr 2026', ok: true },
-    { name: 'inspection_GH2_Q2-2026-C2.csv', records: 884, date: '18 Apr 2026', ok: true },
-    { name: 'inspection_GH1_Q2-2026-C1.csv', records: 902, date: '12 Feb 2026', ok: false },
-    { name: 'inspection_GH2_Q1-2026-C3.csv', records: 876, date: '10 Dec 2025', ok: true },
-  ];
-
-  const handleFile = (file: File | null) => {
-    if (!file) return;
+  const parseFile = useCallback(async (file: File) => {
     setFileName(file.name);
-    setStatus('processing');
-    setTimeout(() => setStatus('done'), 700);
-  };
+    setParsedRows([]);
+    setValidations([]);
+
+    let rawRows: Record<string, any>[] = [];
+
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      rawRows = XLSX.utils.sheet_to_json(sheet);
+    } else {
+      const text = await file.text();
+      const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+      rawRows = result.data as Record<string, any>[];
+    }
+
+    // Map columns (flexible header matching)
+    const colMap = (row: Record<string, any>, keys: string[]): string => {
+      for (const k of keys) {
+        const val = row[k] ?? row[k.toLowerCase()] ?? row[k.toUpperCase()];
+        if (val !== undefined && val !== null) return String(val).trim();
+      }
+      return '';
+    };
+
+    const requiredCols = ['tag', 'tag_id', 'pen_id', 'pen', 'line', 'row'];
+    const firstRow = rawRows[0] ?? {};
+    const headerKeys = Object.keys(firstRow).map(k => k.toLowerCase());
+    const missingRequired = ['tag', 'pen', 'line'].filter(
+      needed => !headerKeys.some(h => h.includes(needed))
+    );
+
+    const rows: ParsedRow[] = rawRows.map(r => ({
+      tag: colMap(r, ['tag', 'tag_id', 'Tag', 'TAG']),
+      pen_id: colMap(r, ['pen_id', 'pen', 'Pen', 'PEN']),
+      line: colMap(r, ['line', 'row', 'Line', 'Row', 'ROW']),
+      pen_slot: parseInt(colMap(r, ['pen_slot', 'slot', 'col', 'Pen_Slot', 'Col'])) || 0,
+      belly_cm: parseFloat(colMap(r, ['belly_cm', 'size_cm', 'size', 'Belly_cm', 'Size'])) || null,
+      grade: parseInt(colMap(r, ['grade', 'Grade'])) || null,
+      condition_codes: colMap(r, ['condition_codes', 'conditions', 'conds', 'Condition_Codes'])
+        .split(/[;,]/)
+        .map(s => s.trim())
+        .filter(Boolean),
+      inspection_date: colMap(r, ['inspection_date', 'date', 'Inspection_Date', 'Date']) || new Date().toISOString().slice(0, 10),
+    })).filter(r => r.tag);
+
+    // Validation
+    const vResults: ValidationResult[] = [];
+    vResults.push({ ok: true, text: `${rows.length} records parsed successfully` });
+    vResults.push({
+      ok: missingRequired.length === 0,
+      text: missingRequired.length === 0 ? 'All required columns present' : `Missing columns: ${missingRequired.join(', ')}`,
+    });
+
+    const tags = rows.map(r => r.tag);
+    const dupes = tags.filter((t, i) => tags.indexOf(t) !== i);
+    vResults.push({
+      ok: dupes.length === 0,
+      text: dupes.length === 0 ? '0 duplicate tag IDs' : `${new Set(dupes).size} duplicate tag IDs found`,
+    });
+
+    const outOfRange = rows.filter(r => r.belly_cm !== null && (r.belly_cm < 10 || r.belly_cm > 100));
+    vResults.push({
+      ok: outOfRange.length === 0,
+      text: outOfRange.length === 0 ? 'All sizes within valid range' : `${outOfRange.length} records with unusual size values`,
+    });
+
+    const noSlot = rows.filter(r => r.pen_slot === 0);
+    if (noSlot.length > 0) {
+      vResults.push({ ok: false, text: `${noSlot.length} records missing pen_slot — will auto-assign` });
+    }
+
+    setParsedRows(rows);
+    setValidations(vResults);
+  }, []);
+
+  const handleImport = useCallback(async () => {
+    if (!parsedRows.length) return;
+    setImporting(true);
+    let warnings = 0;
+
+    try {
+      // Upsert crocs
+      const crocPayloads = parsedRows.map(r => ({
+        tag: r.tag,
+        pen_id: r.pen_id,
+        line: r.line,
+        pen_slot: r.pen_slot,
+        belly_cm: r.belly_cm,
+        grade: r.grade,
+        condition_codes: r.condition_codes,
+        inspection_date: r.inspection_date,
+      }));
+
+      // Insert in batches of 500
+      for (let i = 0; i < crocPayloads.length; i += 500) {
+        const batch = crocPayloads.slice(i, i + 500);
+        const { error } = await supabase.from('crocs').upsert(batch, { onConflict: 'tag' });
+        if (error) {
+          warnings++;
+          console.error('Upsert batch error:', error);
+        }
+      }
+
+      // Also insert inspection records
+      // First get croc IDs for these tags
+      const tags = parsedRows.map(r => r.tag);
+      const { data: crocIds } = await supabase
+        .from('crocs')
+        .select('id, tag')
+        .in('tag', tags);
+
+      if (crocIds?.length) {
+        const tagToId = new Map(crocIds.map(c => [c.tag, c.id]));
+        const inspections = parsedRows
+          .filter(r => r.belly_cm !== null && tagToId.has(r.tag))
+          .map(r => ({
+            croc_id: tagToId.get(r.tag)!,
+            inspection_date: r.inspection_date,
+            belly_cm: r.belly_cm,
+            condition_codes: r.condition_codes,
+          }));
+
+        for (let i = 0; i < inspections.length; i += 500) {
+          const batch = inspections.slice(i, i + 500);
+          const { error } = await supabase.from('inspections').insert(batch);
+          if (error) {
+            warnings++;
+            console.error('Inspection insert error:', error);
+          }
+        }
+      }
+
+      // Log the upload
+      await supabase.from('upload_logs').insert({
+        filename: fileName,
+        record_count: parsedRows.length,
+        status: warnings > 0 ? 'warnings' : 'success',
+        warnings,
+      });
+
+      toast.success(`Imported ${parsedRows.length} records${warnings > 0 ? ` with ${warnings} warnings` : ''}`);
+      refetchLogs();
+    } catch (err: any) {
+      toast.error(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }, [parsedRows, fileName, refetchLogs]);
 
   const handleExport = async (type: 'live' | 'history') => {
-    const key = type;
-    setExporting(key);
+    setExporting(type);
     try {
       const filter = penFilter || undefined;
       const count = type === 'live'
@@ -93,7 +253,7 @@ export default function DataUploadScreen() {
         {/* Upload Zone */}
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border">
-            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Upload Inspection CSV</span>
+            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Upload Inspection Data</span>
           </div>
           <div className="px-[18px] py-4">
             <div
@@ -101,20 +261,19 @@ export default function DataUploadScreen() {
               onClick={() => document.getElementById('file-input')?.click()}
               onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-ct-accent', 'bg-[rgba(201,168,76,.04)]'); }}
               onDragLeave={e => { e.currentTarget.classList.remove('border-ct-accent', 'bg-[rgba(201,168,76,.04)]'); }}
-              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-ct-accent', 'bg-[rgba(201,168,76,.04)]'); parseFile(e.dataTransfer.files[0]); }}
             >
               <div className="text-[32px] mb-2.5 opacity-30">↑</div>
-              <div className="font-display text-xl text-ct-text2 mb-1.5">Drop CSV file here</div>
-              <div className="text-[11px] text-ct-text3 font-mono-ibm">or click to browse · .csv files only</div>
-              <input type="file" id="file-input" accept=".csv" className="hidden" onChange={e => handleFile(e.target.files?.[0] || null)} />
+              <div className="font-display text-xl text-ct-text2 mb-1.5">Drop CSV or XLSX file here</div>
+              <div className="text-[11px] text-ct-text3 font-mono-ibm">or click to browse · .csv and .xlsx supported</div>
+              <input type="file" id="file-input" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => { if (e.target.files?.[0]) parseFile(e.target.files[0]); }} />
             </div>
             <div className="mt-4">
-              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Required columns</div>
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Expected columns</div>
               <div className="font-mono-ibm text-[11px] text-ct-text2 leading-[2.1] bg-surface-2 p-3 rounded-sm border border-border">
-                tag_id &nbsp;·&nbsp; pen &nbsp;·&nbsp; row<br />
-                size_cm &nbsp;·&nbsp; grade &nbsp;·&nbsp; batch<br />
-                condition_codes &nbsp;·&nbsp; inspection_date<br />
-                readiness &nbsp;·&nbsp; green_tag &nbsp;·&nbsp; feed_g
+                tag &nbsp;·&nbsp; pen_id &nbsp;·&nbsp; line &nbsp;·&nbsp; pen_slot<br />
+                belly_cm &nbsp;·&nbsp; grade &nbsp;·&nbsp; condition_codes<br />
+                inspection_date
               </div>
             </div>
           </div>
@@ -126,13 +285,15 @@ export default function DataUploadScreen() {
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Upload History</span>
           </div>
           <div className="px-[14px] py-2">
-            {uploadHistory.map((u, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2.5 bg-surface-2 rounded-sm border border-border mb-1.5">
-                <span className={`text-[13px] ${u.ok ? 'text-ct-good' : 'text-ct-warn'}`}>{u.ok ? '✓' : '⚠'}</span>
-                <span className="font-mono-ibm text-[11px] text-ct-text flex-1">{u.name}</span>
-                <span className="font-mono-ibm text-[10px] text-ct-text3">{u.records} records · {u.date}</span>
-                <span className={`inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm ${u.ok ? 'bg-[rgba(76,175,80,.15)] text-ct-good' : 'bg-[rgba(212,137,42,.15)] text-ct-warn'}`}>
-                  {u.ok ? 'Clean' : '1 warning'}
+            {(!uploadHistory || uploadHistory.length === 0) ? (
+              <div className="text-center py-4 text-ct-text3 font-mono-ibm text-[11px]">No uploads yet.</div>
+            ) : uploadHistory.map((u) => (
+              <div key={u.id} className="flex items-center gap-3 px-3 py-2.5 bg-surface-2 rounded-sm border border-border mb-1.5">
+                <span className={`text-[13px] ${u.status === 'success' ? 'text-ct-good' : 'text-ct-warn'}`}>{u.status === 'success' ? '✓' : '⚠'}</span>
+                <span className="font-mono-ibm text-[11px] text-ct-text flex-1 truncate">{u.filename}</span>
+                <span className="font-mono-ibm text-[10px] text-ct-text3">{u.record_count} records · {new Date(u.uploaded_at).toLocaleDateString()}</span>
+                <span className={`inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm ${u.status === 'success' ? 'bg-[rgba(76,175,80,.15)] text-ct-good' : 'bg-[rgba(212,137,42,.15)] text-ct-warn'}`}>
+                  {u.status === 'success' ? 'Clean' : `${u.warnings} warning${u.warnings !== 1 ? 's' : ''}`}
                 </span>
               </div>
             ))}
@@ -145,34 +306,44 @@ export default function DataUploadScreen() {
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Data Preview</span>
-            <span className={`inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm ${status === 'done' ? 'bg-[rgba(76,175,80,.15)] text-ct-good' : 'bg-[rgba(201,168,76,.15)] text-ct-accent'}`}>
-              {status === 'awaiting' ? 'Awaiting file' : status === 'processing' ? 'Processing…' : '✓ 910 records loaded'}
+            <span className={`inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm ${parsedRows.length > 0 ? 'bg-[rgba(76,175,80,.15)] text-ct-good' : 'bg-[rgba(201,168,76,.15)] text-ct-accent'}`}>
+              {parsedRows.length > 0 ? `✓ ${parsedRows.length} records loaded` : 'Awaiting file'}
             </span>
           </div>
           <div className="px-[18px] py-4">
-            {status !== 'done' ? (
+            {parsedRows.length === 0 ? (
               <div className="text-center py-10 text-ct-text3 font-mono-ibm text-[11px]">No file loaded.</div>
             ) : (
               <>
-                <div className="text-[11px] text-ct-text2 mb-2.5 font-mono-ibm">Preview — <strong className="text-ct-accent">{fileName}</strong></div>
-                <div className="overflow-x-auto">
+                <div className="text-[11px] text-ct-text2 mb-2.5 font-mono-ibm">Preview — <strong className="text-ct-accent">{fileName}</strong> (first 10 rows)</div>
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
                   <table className="border-collapse text-[11px] w-full">
-                    <thead>
+                    <thead className="sticky top-0">
                       <tr className="bg-surface-3">
-                        {['tag_id', 'pen', 'row', 'size_cm', 'condition_codes', 'readiness', 'feed_g'].map(h => (
+                        {['tag', 'pen_id', 'line', 'slot', 'belly_cm', 'grade', 'conditions', 'date'].map(h => (
                           <th key={h} className="p-[5px_8px] border border-border text-ct-text3 font-mono-ibm text-[9px]">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {[[5001, 'GH1', 'A', 29, '', '', 1], [5002, 'GH1', 'A', 31, 'DS02B', 'next', 1], [5003, 'GH1', 'A', 34, '', '', 1], [5004, 'GH1', 'A', 27, 'FW06R', '2', 1], [5005, 'GH1', 'A', 38, '', '', 1]].map((r, i) => (
+                      {parsedRows.slice(0, 10).map((r, i) => (
                         <tr key={i}>
-                          {r.map((v, j) => <td key={j} className="p-[5px_8px] border border-border text-ct-text2">{v}</td>)}
+                          <td className="p-[5px_8px] border border-border text-ct-text2 font-mono-ibm">{r.tag}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.pen_id}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.line}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.pen_slot}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.belly_cm ?? '—'}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.grade ?? '—'}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.condition_codes.join(', ') || '—'}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text3">{r.inspection_date}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                {parsedRows.length > 10 && (
+                  <div className="text-[10px] text-ct-text3 font-mono-ibm mt-2">… and {parsedRows.length - 10} more rows</div>
+                )}
               </>
             )}
           </div>
@@ -184,25 +355,24 @@ export default function DataUploadScreen() {
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Validation Report</span>
           </div>
           <div className="px-[18px] py-4">
-            {status !== 'done' ? (
+            {validations.length === 0 ? (
               <div className="text-center py-5 text-ct-text3 font-mono-ibm text-[11px]">Validation runs automatically on upload.</div>
             ) : (
               <div className="flex flex-col gap-2">
-                {[
-                  { ok: true, text: '910 records parsed successfully' },
-                  { ok: true, text: 'All required columns present' },
-                  { ok: true, text: '0 duplicate tag IDs' },
-                  { ok: false, text: '3 records with unrecognised condition codes — flagged for review' },
-                  { ok: true, text: 'All tag IDs within known batch ranges' },
-                ].map((v, i) => (
+                {validations.map((v, i) => (
                   <div key={i} className="flex gap-2 items-center">
                     <span className={v.ok ? 'text-ct-good' : 'text-ct-warn'}>{v.ok ? '✓' : '⚠'}</span>
                     <span className="text-xs text-ct-text2">{v.text}</span>
                   </div>
                 ))}
                 <div className="mt-2 flex gap-2">
-                  <button className="bg-ct-accent text-background px-[18px] py-2 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer">Confirm Import</button>
-                  <button className="bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] rounded-sm cursor-pointer hover:border-ct-accent">Review Flags</button>
+                  <button
+                    onClick={handleImport}
+                    disabled={importing}
+                    className="bg-ct-accent text-background px-[18px] py-2 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {importing ? 'Importing…' : 'Confirm Import'}
+                  </button>
                 </div>
               </div>
             )}

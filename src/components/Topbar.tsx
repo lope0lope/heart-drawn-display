@@ -1,11 +1,21 @@
+import { useState, useCallback } from 'react';
 import { type ScreenName } from '@/data/mockData';
 
 interface TopbarProps {
   title: string;
   onNavigate: (screen: ScreenName) => void;
+  onSearch?: (query: string) => void;
 }
 
-export default function Topbar({ title, onNavigate }: TopbarProps) {
+export default function Topbar({ title, onNavigate, onSearch }: TopbarProps) {
+  const [query, setQuery] = useState('');
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && query.trim()) {
+      onSearch?.(query.trim());
+    }
+  }, [query, onSearch]);
+
   return (
     <div className="bg-surface border-b border-border px-7 py-3.5 flex items-center justify-between flex-shrink-0">
       <div className="font-display text-[22px] font-semibold text-ct-text tracking-[2px] uppercase">{title}</div>
@@ -13,6 +23,9 @@ export default function Topbar({ title, onNavigate }: TopbarProps) {
         <input
           className="bg-surface-2 border border-border text-ct-text px-3.5 py-2 font-mono-ibm text-xs rounded-sm w-60 outline-none focus:border-ct-accent"
           placeholder="Search tag # or pen slot…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
         />
         <div className="font-mono-ibm text-[11px] bg-ct-tag text-ct-accent px-3 py-1 rounded-sm border border-border">
           Q2 2026 · CYCLE 2
