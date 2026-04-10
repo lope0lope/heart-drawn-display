@@ -1,16 +1,40 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
 
-export default function CrocProfileScreen() {
-  const [searchTag, setSearchTag] = useState('');
+interface CrocProfileProps {
+  initialSearch?: string;
+}
+
+export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
+  const [searchTag, setSearchTag] = useState(initialSearch ?? '');
   const [selectedCroc, setSelectedCroc] = useState<CrocRecord | null>(null);
   const [pen, setPen] = useState('GH1');
   const { data: crocs } = useCrocs(pen);
+  const { data: crocs2 } = useCrocs('GH2');
   const { data: inspections, isLoading: loadingHistory } = useInspectionHistory(selectedCroc?.id);
 
+  // Auto-search when initialSearch changes (from global search)
+  useEffect(() => {
+    if (initialSearch && initialSearch !== searchTag) {
+      setSearchTag(initialSearch);
+    }
+  }, [initialSearch]);
+
+  // Auto-search when crocs load and there's a search tag
+  useEffect(() => {
+    if (!searchTag.trim() || !crocs) return;
+    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
+    const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
+    if (found) {
+      setPen(found.pen_id);
+      setSelectedCroc(found);
+    }
+  }, [crocs, crocs2, searchTag]);
+
   const handleSearch = () => {
-    if (!crocs || !searchTag.trim()) return;
-    const found = crocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
+    if (!searchTag.trim()) return;
+    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
+    const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
     setSelectedCroc(found ?? null);
   };
 
