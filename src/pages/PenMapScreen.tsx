@@ -57,6 +57,14 @@ export default function PenMapScreen() {
     return new Set(filteredCrocs.map(c => c.id));
   }, [searchTag, filteredCrocs]);
 
+  // Unique condition codes present in this pen
+  const penConditions = useMemo(() => {
+    if (!crocs) return [];
+    const codes = new Set<string>();
+    crocs.forEach(c => c.condition_codes.forEach(code => codes.add(code)));
+    return [...codes].sort();
+  }, [crocs]);
+
   if (isLoading || !crocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading pen data…</div>;
   }
