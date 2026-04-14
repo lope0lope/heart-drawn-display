@@ -119,13 +119,6 @@ export default function PenMapScreen() {
     if (c.condition_codes.includes('DS')) dsByLine[c.line] = (dsByLine[c.line] || 0) + 1;
   });
 
-  // Unique condition codes present in this pen
-  const penConditions = useMemo(() => {
-    if (!crocs) return [];
-    const codes = new Set<string>();
-    crocs.forEach(c => c.condition_codes.forEach(code => codes.add(code)));
-    return [...codes].sort();
-  }, [crocs]);
 
   return (
     <div>
