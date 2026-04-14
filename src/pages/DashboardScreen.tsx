@@ -199,6 +199,15 @@ export default function DashboardScreen() {
           ))}
         </Panel>
       </div>
+
+      {conditionDefs && (
+        <InTreatmentDialog
+          open={treatmentOpen}
+          onOpenChange={setTreatmentOpen}
+          crocs={allCrocs}
+          conditionDefs={conditionDefs}
+        />
+      )}
     </div>
   );
 }
