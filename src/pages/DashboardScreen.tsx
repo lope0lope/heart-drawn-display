@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
 import { useCullReadiness, useAiAdvisory } from '@/hooks/useCullData';
+import InTreatmentDialog from '@/components/InTreatmentDialog';
 
 function NoteBox({ children, variant }: { children: React.ReactNode; variant?: 'warn' | 'danger' }) {
   const borderColor = variant === 'warn' ? 'border-l-ct-warn' : variant === 'danger' ? 'border-l-ct-danger' : 'border-l-ct-accent';
