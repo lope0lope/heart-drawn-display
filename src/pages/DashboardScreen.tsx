@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
+import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied, sizeBand } from '@/lib/crocUtils';
 import { useCullReadiness, useAiAdvisory } from '@/hooks/useCullData';
+import { useUploadLogs } from '@/hooks/useFeedData';
 import InTreatmentDialog from '@/components/InTreatmentDialog';
 
 function NoteBox({ children, variant }: { children: React.ReactNode; variant?: 'warn' | 'danger' }) {
@@ -33,10 +34,10 @@ function Panel({ title, pill, children }: { title: string; pill?: React.ReactNod
   );
 }
 
-function KPI({ label, value, sub, delta, variant }: { label: string; value: string; sub?: string; delta?: string; variant?: 'warn' | 'danger' | 'info' | 'cull' }) {
-  const topColor = variant === 'warn' ? 'bg-ct-warn' : variant === 'danger' ? 'bg-ct-danger' : variant === 'info' ? 'bg-ct-info' : variant === 'cull' ? 'bg-ct-cull' : 'bg-ct-accent';
+function KPI({ label, value, sub, delta, variant, onClick }: { label: string; value: string; sub?: string; delta?: string; variant?: 'warn' | 'danger' | 'info' | 'cull' | 'good'; onClick?: () => void }) {
+  const topColor = variant === 'warn' ? 'bg-ct-warn' : variant === 'danger' ? 'bg-ct-danger' : variant === 'info' ? 'bg-ct-info' : variant === 'cull' ? 'bg-ct-cull' : variant === 'good' ? 'bg-ct-good' : 'bg-ct-accent';
   return (
-    <div className="bg-surface border border-border rounded p-4 relative overflow-hidden">
+    <div className={`bg-surface border border-border rounded p-4 relative overflow-hidden ${onClick ? 'cursor-pointer hover:ring-1 hover:ring-ct-accent transition-all' : ''}`} onClick={onClick}>
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${topColor}`} />
       <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">{label}</div>
       <div className="font-display text-[38px] font-semibold text-ct-text leading-none">{value}</div>
@@ -49,9 +50,33 @@ function KPI({ label, value, sub, delta, variant }: { label: string; value: stri
 export default function DashboardScreen() {
   const { data: allCrocs, isLoading } = useAllCrocs();
   const { data: conditionDefs } = useConditionCodes();
+  const { data: uploadLogs } = useUploadLogs();
   const [treatmentOpen, setTreatmentOpen] = useState(false);
   const cullReadiness = useCullReadiness();
   const aiAdvisory = useAiAdvisory();
+
+  // Compute cluster alerts from real data
+  const clusterAlerts = useMemo(() => {
+    if (!allCrocs) return [];
+    const occupied = getOccupied(allCrocs);
+    const lineCondCounts: Record<string, Record<string, number>> = {};
+    occupied.forEach(c => c.condition_codes.forEach(code => {
+      const key = `${c.pen_id}-${c.line}`;
+      lineCondCounts[key] ??= {};
+      lineCondCounts[key][code] = (lineCondCounts[key][code] || 0) + 1;
+    }));
+    const alerts: { severity: 'danger' | 'warn'; text: string }[] = [];
+    Object.entries(lineCondCounts).forEach(([penLine, codes]) => {
+      Object.entries(codes).forEach(([code, count]) => {
+        if (count >= 5) {
+          alerts.push({ severity: 'danger', text: `${count} ${code} flags on ${penLine} — investigate immediately` });
+        } else if (count >= 3) {
+          alerts.push({ severity: 'warn', text: `${count} ${code} flags on ${penLine} — monitor closely` });
+        }
+      });
+    });
+    return alerts.sort((a, b) => (a.severity === 'danger' ? 0 : 1) - (b.severity === 'danger' ? 0 : 1));
+  }, [allCrocs]);
 
   if (isLoading || !allCrocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading live data…</div>;
@@ -70,22 +95,44 @@ export default function DashboardScreen() {
   const maxC = Math.max(...Object.values(cc), 1);
 
   const inTreatment = occupied.filter(c => c.condition_codes.length > 0).length;
+  const cullReady = occupied.filter(c => c.belly_cm !== null && c.belly_cm >= 35).length;
+
+  // Next inspection: find latest inspection_date and compute days since
+  const dates = occupied.filter(c => c.inspection_date).map(c => new Date(c.inspection_date).getTime());
+  const latestInspection = dates.length > 0 ? new Date(Math.max(...dates)) : null;
+  const daysSinceInspection = latestInspection ? Math.floor((Date.now() - latestInspection.getTime()) / 86400000) : null;
+  const inspectionCycleLength = 14; // 2-week cycles
+  const daysUntilNext = daysSinceInspection !== null ? Math.max(0, inspectionCycleLength - daysSinceInspection) : null;
 
   return (
     <div>
-      <NoteBox>
-        <strong>Inspection cycle opens in 14 days.</strong> Data loaded from Supabase — {allCrocs.length} records across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} condition flags active.` : 'No condition flags in current dataset.'} AI advisory updates on each new upload.
-      </NoteBox>
-
-      <div className="grid grid-cols-3 gap-3.5 mb-5">
-        <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count.toLocaleString()} · GH2: ${gh2Count.toLocaleString()}`} />
-        <div className="cursor-pointer hover:ring-1 hover:ring-ct-warn rounded transition-all" onClick={() => setTreatmentOpen(true)}>
-          <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `${inTreatment} with conditions — click to view` : 'None flagged'} variant="warn" />
+      {/* Cluster alerts */}
+      {clusterAlerts.length > 0 && (
+        <div className="mb-4 flex flex-col gap-1.5">
+          {clusterAlerts.slice(0, 5).map((a, i) => (
+            <NoteBox key={i} variant={a.severity}>
+              <strong>{a.severity === 'danger' ? '⚠ ALERT:' : '⊙ WATCH:'}</strong> {a.text}
+            </NoteBox>
+          ))}
         </div>
-        <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} condition types active`} variant="danger" />
+      )}
+
+      {clusterAlerts.length === 0 && (
+        <NoteBox>
+          <strong>No condition clusters detected.</strong> {occupied.length} crocs tracked across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} individual condition flags active.` : 'All clear.'}
+        </NoteBox>
+      )}
+
+      {/* 5-column KPIs */}
+      <div className="grid grid-cols-5 gap-3.5 mb-5">
+        <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count} · GH2: ${gh2Count}`} />
+        <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `Click to view list` : 'None flagged'} variant="warn" onClick={() => setTreatmentOpen(true)} />
+        <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} types active`} variant="danger" />
+        <KPI label="Cull Ready" value={cullReady.toString()} sub="Belly ≥ 35 cm" delta={`${((cullReady / occupied.length) * 100).toFixed(0)}% of stock`} variant="good" />
+        <KPI label="Next Inspection" value={daysUntilNext !== null ? `${daysUntilNext}d` : '—'} sub={daysUntilNext !== null ? (daysUntilNext <= 2 ? 'Imminent' : 'Scheduled') : 'No data'} delta={latestInspection ? `Last: ${latestInspection.toLocaleDateString()}` : ''} variant={daysUntilNext !== null && daysUntilNext <= 2 ? 'warn' : 'info'} />
       </div>
 
-      {/* Cull Readiness — Live computed */}
+      {/* Cull Readiness */}
       <div className="bg-surface border border-border rounded overflow-hidden mb-3.5">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Cull Readiness — Worker Assessment vs AI Suggestion</span>
@@ -184,13 +231,17 @@ export default function DashboardScreen() {
           </div>
         </Panel>
         <Panel title="Recent Activity">
+          {/* Real activity from upload logs + computed data */}
           {[
-            { col: 'bg-ct-accent', text: 'Live data connected — Supabase wired.', time: 'Now' },
-            { col: 'bg-ct-info', text: `${allCrocs.length} records loaded. ${occupied.length} with measurements.`, time: 'Now' },
-            { col: 'bg-ct-accent', text: `GH1: ${gh1Count} crocs · GH2: ${gh2Count} crocs.`, time: 'Mar 2026' },
-            { col: 'bg-ct-warn', text: `${allCrocs.length - occupied.length} empty slots across both pens.`, time: 'Mar 2026' },
-            { col: 'bg-ct-cull', text: 'Condition codes ready for next inspection upload.', time: 'Pending' },
-          ].map((a, i) => (
+            ...(uploadLogs ?? []).slice(0, 3).map(log => ({
+              col: log.status === 'success' ? 'bg-ct-good' : 'bg-ct-warn',
+              text: `${log.filename} — ${log.record_count} records ${log.status === 'success' ? 'imported' : log.status}${log.warnings > 0 ? ` (${log.warnings} warnings)` : ''}`,
+              time: new Date(log.uploaded_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }),
+            })),
+            { col: 'bg-ct-info', text: `${occupied.length} crocs with measurements across GH1 & GH2.`, time: 'Current' },
+            { col: 'bg-ct-accent', text: `${cullReady} crocs at cull-ready size (≥35 cm).`, time: 'Current' },
+            ...(inTreatment > 0 ? [{ col: 'bg-ct-warn', text: `${inTreatment} crocs in treatment hold.`, time: 'Current' }] : []),
+          ].slice(0, 6).map((a, i) => (
             <div key={i} className="flex gap-3 py-2.5 border-b border-border last:border-b-0 items-start">
               <div className={`w-[7px] h-[7px] rounded-full mt-1.5 flex-shrink-0 ${a.col}`} />
               <div className="text-xs text-ct-text2 leading-relaxed flex-1">{a.text}</div>
