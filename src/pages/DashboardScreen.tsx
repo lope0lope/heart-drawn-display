@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied } from '@/lib/crocUtils';
 import { useCullReadiness, useAiAdvisory } from '@/hooks/useCullData';
+import InTreatmentDialog from '@/components/InTreatmentDialog';
 
 function NoteBox({ children, variant }: { children: React.ReactNode; variant?: 'warn' | 'danger' }) {
   const borderColor = variant === 'warn' ? 'border-l-ct-warn' : variant === 'danger' ? 'border-l-ct-danger' : 'border-l-ct-accent';
@@ -47,6 +49,7 @@ function KPI({ label, value, sub, delta, variant }: { label: string; value: stri
 export default function DashboardScreen() {
   const { data: allCrocs, isLoading } = useAllCrocs();
   const { data: conditionDefs } = useConditionCodes();
+  const [treatmentOpen, setTreatmentOpen] = useState(false);
   const cullReadiness = useCullReadiness();
   const aiAdvisory = useAiAdvisory();
 
@@ -76,7 +79,9 @@ export default function DashboardScreen() {
 
       <div className="grid grid-cols-3 gap-3.5 mb-5">
         <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count.toLocaleString()} · GH2: ${gh2Count.toLocaleString()}`} />
-        <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `${inTreatment} with conditions` : 'None flagged'} variant="warn" />
+        <div className="cursor-pointer hover:ring-1 hover:ring-ct-warn rounded transition-all" onClick={() => setTreatmentOpen(true)}>
+          <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `${inTreatment} with conditions — click to view` : 'None flagged'} variant="warn" />
+        </div>
         <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} condition types active`} variant="danger" />
       </div>
 
@@ -194,6 +199,15 @@ export default function DashboardScreen() {
           ))}
         </Panel>
       </div>
+
+      {conditionDefs && (
+        <InTreatmentDialog
+          open={treatmentOpen}
+          onOpenChange={setTreatmentOpen}
+          crocs={allCrocs}
+          conditionDefs={conditionDefs}
+        />
+      )}
     </div>
   );
 }

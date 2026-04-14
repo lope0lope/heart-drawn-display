@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid } from '@/lib/crocUtils';
 
@@ -7,6 +7,15 @@ export default function PenMapScreen() {
   const [mode, setMode] = useState('health');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  
+  // New filter states
+  const [lineFilter, setLineFilter] = useState<string>('all');
+  const [sizeMin, setSizeMin] = useState<string>('');
+  const [sizeMax, setSizeMax] = useState<string>('');
+  const [searchTag, setSearchTag] = useState('');
+  const [showOnlyConditions, setShowOnlyConditions] = useState(false);
+  const [showEmpty, setShowEmpty] = useState(true);
+  const [gradeFilter, setGradeFilter] = useState<string>('all');
 
   const { data: crocs, isLoading } = useCrocs(pen);
   const { data: conditionDefs } = useConditionCodes();
@@ -17,13 +26,42 @@ export default function PenMapScreen() {
     if (all.size > 0 && activeFilters.size === 0) setActiveFilters(all);
   }
 
+  // Derive available lines
+  const availableLines = useMemo(() => {
+    if (!crocs) return [];
+    return [...new Set(crocs.map(c => c.line))].sort();
+  }, [crocs]);
+
+  // Apply filters
+  const filteredCrocs = useMemo(() => {
+    if (!crocs) return [];
+    return crocs.filter(c => {
+      if (lineFilter !== 'all' && c.line !== lineFilter) return false;
+      if (sizeMin && c.belly_cm !== null && c.belly_cm < Number(sizeMin)) return false;
+      if (sizeMax && c.belly_cm !== null && c.belly_cm > Number(sizeMax)) return false;
+      if (searchTag && c.tag && !c.tag.toLowerCase().includes(searchTag.toLowerCase())) return false;
+      if (searchTag && !c.tag) return false;
+      if (showOnlyConditions && c.condition_codes.length === 0) return false;
+      if (gradeFilter !== 'all' && !c.condition_codes.includes(gradeFilter)) return false;
+      return true;
+    });
+  }, [crocs, lineFilter, sizeMin, sizeMax, searchTag, showOnlyConditions, gradeFilter]);
+
+  // Highlighted tags for search
+  const highlightedIds = useMemo(() => {
+    if (!searchTag) return new Set<number>();
+    return new Set(filteredCrocs.map(c => c.id));
+  }, [searchTag, filteredCrocs]);
+
   if (isLoading || !crocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading pen data…</div>;
   }
 
   const { lines, maxSlot, grid } = buildPenGrid(crocs);
-  const occupied = crocs.filter(c => c.belly_cm !== null);
-  const statsText = `${occupied.length} / ${crocs.length} occupied`;
+  const displayLines = lineFilter === 'all' ? lines : lines.filter(l => l === lineFilter);
+  const occupied = filteredCrocs.filter(c => c.belly_cm !== null);
+  const totalOccupied = crocs.filter(c => c.belly_cm !== null).length;
+  const statsText = `Showing ${occupied.length} / ${totalOccupied} occupied (${crocs.length} total slots)`;
 
   function getCellColor(croc: CrocRecord): string {
     if (mode === 'health') {
@@ -49,6 +87,18 @@ export default function PenMapScreen() {
     });
   };
 
+  const clearAllFilters = () => {
+    setLineFilter('all');
+    setSizeMin('');
+    setSizeMax('');
+    setSearchTag('');
+    setShowOnlyConditions(false);
+    setShowEmpty(true);
+    setGradeFilter('all');
+  };
+
+  const hasActiveFilters = lineFilter !== 'all' || sizeMin || sizeMax || searchTag || showOnlyConditions || !showEmpty || gradeFilter !== 'all';
+
   // Feeder alerts from real data
   const mnByLine: Record<string, number> = {};
   const dsByLine: Record<string, number> = {};
@@ -57,9 +107,18 @@ export default function PenMapScreen() {
     if (c.condition_codes.includes('DS')) dsByLine[c.line] = (dsByLine[c.line] || 0) + 1;
   });
 
+  // Unique condition codes present in this pen
+  const penConditions = useMemo(() => {
+    if (!crocs) return [];
+    const codes = new Set<string>();
+    crocs.forEach(c => c.condition_codes.forEach(code => codes.add(code)));
+    return [...codes].sort();
+  }, [crocs]);
+
   return (
     <div>
-      <div className="flex gap-2.5 items-center flex-wrap mb-3">
+      {/* Primary controls */}
+      <div className="flex gap-2.5 items-center flex-wrap mb-2">
         <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={pen} onChange={e => setPen(e.target.value)}>
           <option value="GH1">GH1</option>
           <option value="GH2">GH2</option>
@@ -71,6 +130,77 @@ export default function PenMapScreen() {
         </select>
         <span className="font-mono-ibm text-[10px] text-ct-text3">{statsText}</span>
         <button className="ml-auto bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] cursor-pointer rounded-sm transition-all hover:border-ct-accent hover:bg-surface-2 whitespace-nowrap">⎙ Print / Export</button>
+      </div>
+
+      {/* Enhanced filters panel */}
+      <div className="bg-surface border border-border rounded mb-2.5 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase">Filters</span>
+          {hasActiveFilters && (
+            <button onClick={clearAllFilters} className="font-mono-ibm text-[10px] text-ct-accent hover:underline cursor-pointer">
+              Clear all filters
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2.5 items-end flex-wrap">
+          {/* Line filter */}
+          <div>
+            <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Line</label>
+            <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={lineFilter} onChange={e => setLineFilter(e.target.value)}>
+              <option value="all">All Lines</option>
+              {availableLines.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+
+          {/* Size range */}
+          <div>
+            <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Size (cm)</label>
+            <div className="flex gap-1 items-center">
+              <input
+                type="number" placeholder="Min" value={sizeMin} onChange={e => setSizeMin(e.target.value)}
+                className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[60px]"
+              />
+              <span className="text-ct-text3 text-[10px]">–</span>
+              <input
+                type="number" placeholder="Max" value={sizeMax} onChange={e => setSizeMax(e.target.value)}
+                className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[60px]"
+              />
+            </div>
+          </div>
+
+          {/* Tag search */}
+          <div>
+            <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Tag Search</label>
+            <input
+              type="text" placeholder="Search tag…" value={searchTag} onChange={e => setSearchTag(e.target.value)}
+              className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[120px]"
+            />
+          </div>
+
+          {/* Condition filter */}
+          <div>
+            <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Condition</label>
+            <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)}>
+              <option value="all">All Conditions</option>
+              {penConditions.map(code => {
+                const def = conditionDefs?.find(c => c.code === code);
+                return <option key={code} value={code}>{code}{def ? ` — ${def.name}` : ''}</option>;
+              })}
+            </select>
+          </div>
+
+          {/* Toggle: only conditions */}
+          <label className="flex items-center gap-1.5 cursor-pointer select-none pb-[1px]">
+            <input type="checkbox" checked={showOnlyConditions} onChange={e => setShowOnlyConditions(e.target.checked)} className="accent-[hsl(var(--ct-accent))]" />
+            <span className="font-mono-ibm text-[10px] text-ct-text2">Flagged only</span>
+          </label>
+
+          {/* Toggle: show empty */}
+          <label className="flex items-center gap-1.5 cursor-pointer select-none pb-[1px]">
+            <input type="checkbox" checked={showEmpty} onChange={e => setShowEmpty(e.target.checked)} className="accent-[hsl(var(--ct-accent))]" />
+            <span className="font-mono-ibm text-[10px] text-ct-text2">Show empty</span>
+          </label>
+        </div>
       </div>
 
       {/* Legend */}
@@ -104,15 +234,25 @@ export default function PenMapScreen() {
       <div className="bg-surface border border-border rounded p-4 overflow-auto relative" onMouseLeave={() => setTooltip(null)}>
         <div className="flex gap-0.5">
           <div className="flex flex-col gap-0.5">
-            {lines.map(r => <div key={r} className="font-mono-ibm text-[9px] text-ct-text3 flex items-center pr-[5px] min-w-[14px] h-[13px]">{r}</div>)}
+            {displayLines.map(r => <div key={r} className="font-mono-ibm text-[9px] text-ct-text3 flex items-center pr-[5px] min-w-[14px] h-[13px]">{r}</div>)}
           </div>
           <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${maxSlot}, 13px)` }}>
-            {lines.flatMap(line => {
+            {displayLines.flatMap(line => {
               const cells = [];
               for (let s = 1; s <= maxSlot; s++) {
                 const croc = grid.get(line)?.get(s);
+                const isFiltered = croc && filteredCrocs.includes(croc);
+                const isHighlighted = croc && highlightedIds.has(croc.id);
+
                 if (!croc || croc.belly_cm === null) {
-                  cells.push(<div key={`${line}-${s}`} className="w-[13px] h-[13px] rounded-[1px] bg-surface-3 opacity-20" />);
+                  cells.push(
+                    <div key={`${line}-${s}`} className={`w-[13px] h-[13px] rounded-[1px] bg-surface-3 ${showEmpty ? 'opacity-20' : 'opacity-5'}`} />
+                  );
+                } else if (!isFiltered && hasActiveFilters) {
+                  // Dimmed for filtered-out crocs
+                  cells.push(
+                    <div key={`${line}-${s}`} className="w-[13px] h-[13px] rounded-[1px] bg-surface-3 opacity-10" />
+                  );
                 } else {
                   const bg = getCellColor(croc);
                   const cstr = croc.condition_codes.length ? croc.condition_codes.join(' · ') : 'Clear';
@@ -120,9 +260,9 @@ export default function PenMapScreen() {
                   cells.push(
                     <div
                       key={`${line}-${s}`}
-                      className="w-[13px] h-[13px] rounded-[1px] cursor-pointer transition-transform hover:scale-[1.7] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)]"
+                      className={`w-[13px] h-[13px] rounded-[1px] cursor-pointer transition-transform hover:scale-[1.7] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.4] z-10' : ''}`}
                       style={{ background: bg }}
-                      onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\n${cstr}` })}
+                      onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}` })}
                       onMouseLeave={() => setTooltip(null)}
                     />
                   );
