@@ -1,104 +1,88 @@
 
 
-## Make CrocTrack 100% Live — Remove All Fake Data & Fix Remaining Issues
+## CrocTrack — Prototype Alignment & Practical Output Improvements
 
-### What's Still Fake or Broken
+After comparing the uploaded prototype (`croctrack_v4_1.html`) against the current live app, I've identified several gaps where the prototype delivers more **practical, actionable outputs** that the current app is missing or underdelivering on.
 
-After auditing every screen, here is everything that is not driven by real data:
-
-1. **`CULL_READINESS` (Dashboard)** — Hardcoded worker vs AI counts (218, 194, 341, etc.) in `mockData.ts`. Not computed from actual croc data.
-
-2. **`YTD_CULLED` (Forecast)** — Hardcoded array `[88, 142, 170, 210, 98, 42]` in `crocUtils.ts`. Should come from a cull log or be tracked in Supabase.
-
-3. **`GROWTH_RATES` (Forecast)** — Hardcoded `[5.2, 4.8, 4.5, 4.1, 3.6, 2.9]`. Should be computed from actual inspection history deltas.
-
-4. **AI Culling Advisory (Forecast)** — Entirely hardcoded HTML text ("cull 94 units", "shortfall of 68 units"). Not generated from data.
-
-5. **Month-by-Month Cull Plan (Forecast)** — Hardcoded grid of numbers on line 33. Not based on any real planning data.
-
-6. **AI Advisory (Dashboard)** — Static text about "33-34 cm shortfall" and "45+ cm surplus". Not computed.
-
-7. **Cull Impact table (Feed Reports)** — `cullData` on line 44 is hardcoded batch/cull stats.
-
-8. **Feed Reports default cycle** — Hardcodes `'Cycle 3'` instead of picking the latest available cycle.
-
-9. **Analytics Query Builder** — The "Run" button and filters are cosmetic; they don't actually filter data.
-
-10. **RLS missing for crocs/inspections** — No INSERT/UPDATE policies, so the Data Upload "Confirm Import" will silently fail.
-
-11. **No feed data uploaded for GH2** — Feed records only exist as seed data; you mentioned you haven't uploaded real feed data yet.
-
----
+### Key Problems
+1. **Dashboard is data-heavy but not actionable** — the note box, activity feed, and AI advisory show generic static text rather than specific, contextual alerts (e.g., "GH1 Row F has elevated DS cluster" or "3 MN flags on GH2 Row J — feeder check recommended").
+2. **In-Treatment dialog** works but doesn't group by line or let you filter — you want to walk the farm with a printout per line/pen.
+3. **Pen Map** is missing the **batch filter** and **print/export** functionality from the prototype.
+4. **Croc Profile** is missing **feed consumption history**, **size history with progress bar** to cull threshold, and **projected cull timeline**.
+5. **Analytics** is missing the **Treatment Hold — Healing Trajectories** panel and the **Batch Comparison** panel from the prototype.
+6. **Condition Codes** page is missing **Body Locations grid**, **Severity Rating panel** (NXT, 1-4 scale), and the **Live vs Hide defect distinction** from the prototype.
+7. **Dashboard KPIs** should be 5-column in prototype (currently 3) — missing "Cull Ready" and "Next Inspection" KPIs.
 
 ### Plan
 
-#### 1. Create a `cull_records` table and compute YTD culled from real data
-- New Supabase table: `cull_records (id, croc_id, cull_date, size_band, reason)`
-- Replace `YTD_CULLED` constant with a query hook `useCullStats()` that counts records per size band
-- Update Forecast and Dashboard screens to use this hook
+#### 1. Dashboard — Make alerts specific and actionable
+- Replace the generic NoteBox text with **computed alerts**: scan croc data for clusters (e.g., 3+ MN flags on the same line, DS clusters) and surface them as named warnings
+- Add two more KPI cards: **Cull Ready** (count of crocs above 35cm threshold) and **Next Inspection** countdown
+- Make the Activity feed show real recent actions (upload logs, condition changes) instead of static text
+- AI Advisory should call out specific lines/rows with problems
 
-#### 2. Compute growth rates from inspection history
-- Replace `GROWTH_RATES` constant with a function that calculates average belly growth per size band from the `inspections` table (delta between consecutive inspections per croc)
-- Create `useGrowthRates()` hook
+#### 2. In-Treatment Dialog — Practical inspection list
+- Add **group-by-line** toggle so you can print a list organized by walk route (Line A, Line B, etc.)
+- Add **condition filter** dropdown to show only specific conditions (e.g., "show me all MN crocs")
+- Add **severity column** showing grade/severity alongside condition codes
+- Improve the print layout to be a proper **farm walk checklist** with checkboxes
 
-#### 3. Generate AI advisories dynamically from live data
-- Replace hardcoded AI text on Dashboard and Forecast with computed advisories based on:
-  - Current size band counts vs targets
-  - Computed growth rates
-  - YTD cull progress
-- Generate the cull plan grid programmatically (distribute remaining target across months)
-- Replace `CULL_READINESS` with computed values from size bands and growth projections
+#### 3. Pen Map — Add batch filter and print
+- Add **Batch filter** dropdown (tag ranges like 5000–5600) that dims non-batch crocs, matching the prototype
+- Wire the **Print / Export** button to generate a printable pen map (color grid + legend), matching the prototype's `printPenMap()` function
+- Add **Row Summary** sidebar showing condition count per line as bar chart
 
-#### 4. Fix Feed Reports
-- Compute `cullData` from `cull_records` joined with feed history instead of hardcoding
-- Default cycle selector to the latest cycle returned by `useFeedCycles()`
+#### 4. Croc Profile — Add practical tracking panels
+- Add **Feed Consumption History** panel showing feed intake per cycle (from feed_records joined by pen/line)
+- Add **Size History** panel with a progress bar showing % toward cull threshold (54 cm)
+- Add **Projected Timeline** with ghost entries showing estimated cull date based on growth rate
+- Add **CITIES Tag** placeholder field (assigned at cull)
 
-#### 5. Wire the Analytics Query Builder
-- Make the "Run" button actually filter croc data based on selected condition/pen/size/line
-- Display filtered results in the chosen format (heatmap/table/bar chart)
+#### 5. Analytics — Add missing panels from prototype
+- Add **Treatment Hold — Healing Trajectories** panel showing avg cycles to heal per condition type
+- Add **Batch Comparison** panel showing avg size by cycle for different tag ranges
+- Make heatmap show both GH1 and GH2
 
-#### 6. Add RLS policies for data import
-- Migration to add INSERT and UPDATE policies on `crocs` and `inspections` tables so the upload screen works
-
-#### 7. Seed GH2 feed data
-- Since you don't have real feed data to upload yet, seed realistic GH2 feed records into the `feed_records` table (this is already partially done for GH1 + GH2 in the migration, but we can verify it's complete)
-
-#### 8. Cleanup
-- Remove `CULL_READINESS` from `mockData.ts`
-- Remove `YTD_CULLED` and `GROWTH_RATES` constants from `crocUtils.ts`
-- All remaining data flows from Supabase
-
----
+#### 6. Condition Codes — Complete reference page
+- Add **Body Locations grid** (Collar, Chest, Belly, Tail, LF, RF, RT, RB, FT, LB) with descriptions
+- Add **Severity Rating panel** with the NXT/1/2/3/4 scale and their meanings
+- Split the codes table into **Live Defects** and **Defects in Hide** (two side-by-side tables), with the "In Hide?" column indicator
 
 ### Technical Details
 
-**New table:**
-```sql
-create table public.cull_records (
-  id serial primary key,
-  croc_id int references public.crocs(id),
-  cull_date date not null,
-  size_band_index int not null,
-  reason text,
-  created_at timestamptz default now()
-);
+**Files to edit:**
+- `src/pages/DashboardScreen.tsx` — computed alerts, 2 new KPIs, real activity feed
+- `src/components/InTreatmentDialog.tsx` — group-by-line, condition filter, print checklist
+- `src/pages/PenMapScreen.tsx` — batch filter, print function, row summary
+- `src/pages/CrocProfileScreen.tsx` — feed history, size progress bar, projected timeline
+- `src/pages/AnalyticsScreen.tsx` — healing trajectories, batch comparison panels
+- `src/pages/ConditionCodesScreen.tsx` — body locations, severity scale, live/hide split
+
+**No new tables needed** — all data comes from existing `crocs`, `inspections`, `feed_records`, and `condition_codes` tables.
+
+**Batch filter logic:**
+```typescript
+const batchRanges = [
+  { label: '5000–5600', min: 5000, max: 5600 },
+  { label: '5601–6200', min: 5601, max: 6200 },
+  // etc.
+];
+// Filter by parsing tag as number
+const inBatch = !batchFilter || (parseInt(croc.tag) >= batch.min && parseInt(croc.tag) <= batch.max);
 ```
 
-**New hooks:**
-- `useCullStats()` — counts cull records per size band, YTD
-- `useGrowthRates()` — computes avg growth per size band from inspections
-- `useCullReadiness()` — derives worker/AI cull readiness from size data + growth projections
-
-**New migration:** RLS policies for `crocs` (INSERT, UPDATE) and `inspections` (INSERT)
-
-**Files to create/edit:**
-- New migration SQL file
-- `src/hooks/useCullData.ts` (new)
-- `src/hooks/useCrocs.ts` (add growth rate computation)
-- `src/pages/ForecastScreen.tsx` (replace all hardcoded data)
-- `src/pages/DashboardScreen.tsx` (replace CULL_READINESS + AI advisory)
-- `src/pages/FeedReportsScreen.tsx` (dynamic default cycle, remove hardcoded cullData)
-- `src/pages/AnalyticsScreen.tsx` (wire query builder)
-- `src/data/mockData.ts` (remove CULL_READINESS)
-- `src/lib/crocUtils.ts` (remove YTD_CULLED, GROWTH_RATES)
+**Cluster detection (Dashboard alerts):**
+```typescript
+// Group conditions by line, flag any line with 3+ of the same condition
+const lineCondCounts: Record<string, Record<string, number>> = {};
+crocs.forEach(c => c.condition_codes.forEach(code => {
+  lineCondCounts[c.line] ??= {};
+  lineCondCounts[c.line][code] = (lineCondCounts[c.line][code] || 0) + 1;
+}));
+const alerts = Object.entries(lineCondCounts).flatMap(([line, codes]) =>
+  Object.entries(codes).filter(([_, count]) => count >= 3).map(([code, count]) =>
+    `${count} ${code} flags on Line ${line}`
+  )
+);
+```
 
