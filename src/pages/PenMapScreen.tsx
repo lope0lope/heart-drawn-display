@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid } from '@/lib/crocUtils';
 
@@ -21,10 +21,14 @@ export default function PenMapScreen() {
   const { data: conditionDefs } = useConditionCodes();
 
   // Initialize filters from condition defs
-  if (conditionDefs && activeFilters.size === 0) {
-    const all = new Set(conditionDefs.map(c => c.code));
-    if (all.size > 0 && activeFilters.size === 0) setActiveFilters(all);
-  }
+  useEffect(() => {
+    if (conditionDefs && conditionDefs.length > 0) {
+      setActiveFilters(prev => {
+        if (prev.size > 0) return prev;
+        return new Set(conditionDefs.map(c => c.code));
+      });
+    }
+  }, [conditionDefs]);
 
   // Derive available lines
   const availableLines = useMemo(() => {
