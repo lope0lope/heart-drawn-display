@@ -11,6 +11,7 @@ export interface CrocRecord {
   pen_slot: number;
   condition_codes: string[];
   inspection_date: string;
+  cull_schedule: string | null;
 }
 
 export interface ConditionCodeRecord {
