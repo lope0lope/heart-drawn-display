@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied, sizeBand } from '@/lib/crocUtils';
-import { useCullReadiness, useAiAdvisory } from '@/hooks/useCullData';
+import { useCullProjections, useAiAdvisory } from '@/hooks/useCullData';
 import { useUploadLogs } from '@/hooks/useFeedData';
 import InTreatmentDialog from '@/components/InTreatmentDialog';
 
@@ -52,7 +52,7 @@ export default function DashboardScreen() {
   const { data: conditionDefs } = useConditionCodes();
   const { data: uploadLogs } = useUploadLogs();
   const [treatmentOpen, setTreatmentOpen] = useState(false);
-  const cullReadiness = useCullReadiness();
+  const cullProjections = useCullProjections();
   const aiAdvisory = useAiAdvisory();
 
   // Compute cluster alerts from real data
