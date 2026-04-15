@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
+import { useAllCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
 import { useFeedRecords } from '@/hooks/useFeedData';
 import { useGrowthRates } from '@/hooks/useCullData';
 import { sizeBand } from '@/lib/crocUtils';
@@ -13,9 +13,7 @@ interface CrocProfileProps {
 export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   const [searchTag, setSearchTag] = useState(initialSearch ?? '');
   const [selectedCroc, setSelectedCroc] = useState<CrocRecord | null>(null);
-  const [pen, setPen] = useState('GH1');
-  const { data: crocs } = useCrocs(pen);
-  const { data: crocs2 } = useCrocs('GH2');
+  const { data: allCrocs } = useAllCrocs();
   const { data: inspections, isLoading: loadingHistory } = useInspectionHistory(selectedCroc?.id);
   const { data: feedRecords } = useFeedRecords(selectedCroc?.pen_id);
   const { data: growthRates } = useGrowthRates();
