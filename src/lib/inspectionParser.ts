@@ -5,10 +5,12 @@ export interface ParsedInspectionRow {
   pen: string;
   tag: string;
   belly_cm: number | null;
-  condition: string;
+  conditions: string[];
   last_inspected: string;
   cull: string;
   grade: number | null;
+  /** 1-based CSV row number for error reporting */
+  csvRow: number;
 }
 
 export interface ParsedInspectionFile {
