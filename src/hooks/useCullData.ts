@@ -49,9 +49,6 @@ export function useYtdCulled() {
 
 /**
  * Compute NON-LINEAR growth rates per size band from inspection history.
- * Groups consecutive inspections by croc, measures cm gained per ~2-month cycle,
- * and buckets by the starting size band. This captures that smaller crocs grow
- * faster than larger ones.
  */
 export function useGrowthRates() {
   return useQuery({
@@ -64,8 +61,6 @@ export function useGrowthRates() {
         .order('croc_id')
         .order('inspection_date', { ascending: true });
 
-      // Defaults based on typical saltwater croc growth curves (cm per 2-month cycle)
-      // Smaller crocs grow much faster; larger crocs slow significantly
       const defaults = [3.8, 3.2, 2.6, 2.0, 1.4, 0.8];
       if (error || !data || data.length === 0) return defaults;
 
@@ -82,11 +77,10 @@ export function useGrowthRates() {
           const delta = crocRows[j].belly_cm - crocRows[j - 1].belly_cm;
           const band = sizeBand(crocRows[j - 1].belly_cm);
           if (band !== null && delta > 0) {
-            // Normalize to ~2-month intervals
             const days = (new Date(crocRows[j].inspection_date).getTime() -
               new Date(crocRows[j - 1].inspection_date).getTime()) / 86400000;
             if (days > 10 && days < 200) {
-              const normalized = (delta / days) * 60; // cm per 60 days
+              const normalized = (delta / days) * 60;
               deltas[band].push(normalized);
             }
           }
@@ -102,12 +96,8 @@ export function useGrowthRates() {
   });
 }
 
-const CULL_THRESHOLD = 54;
-
 /**
- * Project each croc forward through cycles using non-linear growth rates.
- * As a croc grows into a new size band, its growth rate changes to match
- * that band's rate — capturing the natural slowdown.
+ * Project belly forward through cycles using non-linear growth rates.
  */
 export function projectBelly(currentCm: number, rates: number[], cycles: number): number {
   let cm = currentCm;
@@ -119,7 +109,19 @@ export function projectBelly(currentCm: number, rates: number[], cycles: number)
   return cm;
 }
 
-/** Compute cull-ready counts for now, +1 cycle, +2 cycles */
+export interface BandProjection {
+  label: string;
+  cycles: number;
+  /** Projected stock count per size band */
+  distribution: number[];
+  /** Total occupied */
+  total: number;
+}
+
+/**
+ * Full cull projections — shows stock distribution across ALL size bands
+ * at 4 horizons (now, +1, +2, +3 cycles). Every band is cullable.
+ */
 export function useCullProjections() {
   const { data: allCrocs } = useAllCrocs();
   const { data: growthRates } = useGrowthRates();
@@ -128,36 +130,26 @@ export function useCullProjections() {
 
   const occupied = getOccupied(allCrocs);
 
-  // For each cycle horizon, count crocs that will be ≥54cm
   const horizons = [
     { label: 'Now', cycles: 0 },
-    { label: 'Next Cycle (~2 mo)', cycles: 1 },
+    { label: '+1 Cycle (~2 mo)', cycles: 1 },
     { label: '+2 Cycles (~4 mo)', cycles: 2 },
+    { label: '+3 Cycles (~6 mo)', cycles: 3 },
   ];
 
-  const projections = horizons.map(h => {
+  const projections: BandProjection[] = horizons.map(h => {
     const byBand = [0, 0, 0, 0, 0, 0];
-    let cullReady = 0;
-    const cullReadyByBand = [0, 0, 0, 0, 0, 0];
 
     for (const c of occupied) {
       if (!c.belly_cm) continue;
       const projected = projectBelly(c.belly_cm, growthRates, h.cycles);
       const band = sizeBand(projected);
       if (band !== null) byBand[band]++;
-
-      if (projected >= CULL_THRESHOLD) {
-        cullReady++;
-        const currentBand = sizeBand(c.belly_cm);
-        if (currentBand !== null) cullReadyByBand[currentBand]++;
-      }
     }
 
     return {
       ...h,
       distribution: byBand,
-      cullReady,
-      cullReadyByBand,
       total: occupied.length,
     };
   });
@@ -179,32 +171,33 @@ export function useAiAdvisory() {
 
   const advisories: { icon: string; color: string; text: string }[] = [];
 
-  // Count how many are already at cull threshold
-  const cullNow = occupied.filter(c => c.belly_cm && c.belly_cm >= CULL_THRESHOLD).length;
-  if (cullNow > 0) {
-    advisories.push({
-      icon: '✓',
-      color: 'ct-good',
-      text: `${cullNow} crocs at ≥${CULL_THRESHOLD}cm — ready for immediate cull.`,
-    });
-  }
-
-  // Check upcoming supply per band
+  // Check each band against its target
   SIZE_BANDS.forEach((band, i) => {
     const remaining = targets[i] - ytdCulled[i];
-    const surplus = now[i] - remaining;
-
-    if (surplus > 20) {
+    if (now[i] >= remaining && remaining > 0) {
       advisories.push({
-        icon: '⚠',
-        color: 'ct-warn',
-        text: `${band.range} — surplus of ${surplus}. Consider accelerating cull schedule.`,
+        icon: '✓',
+        color: 'ct-good',
+        text: `${band.range} — ${now[i]} in stock, ${remaining} still needed. Ready to cull.`,
       });
     } else if (remaining > now[i] * 1.5 && remaining > 20) {
       advisories.push({
         icon: '⚠',
         color: 'ct-danger',
-        text: `${band.range} — shortfall risk. ${remaining - now[i]} units below target. Hold stock.`,
+        text: `${band.range} — shortfall risk. Only ${now[i]} in stock vs ${remaining} needed.`,
+      });
+    }
+  });
+
+  // Check surplus bands
+  SIZE_BANDS.forEach((band, i) => {
+    const remaining = targets[i] - ytdCulled[i];
+    const surplus = now[i] - remaining;
+    if (surplus > 20 && remaining > 0) {
+      advisories.push({
+        icon: '⚠',
+        color: 'ct-warn',
+        text: `${band.range} — surplus of ${surplus}. Consider accelerating cull schedule.`,
       });
     }
   });
