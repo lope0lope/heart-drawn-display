@@ -103,7 +103,8 @@ export default function PenMapScreen() {
   const displayLines = lineFilter === 'all' ? lines : lines.filter(l => l === lineFilter);
   const occupied = filteredCrocs.filter(c => c.belly_cm !== null);
   const totalOccupied = crocs.filter(c => c.belly_cm !== null).length;
-  const statsText = `Showing ${occupied.length} / ${totalOccupied} occupied (${crocs.length} total slots)`;
+  const dupeSlotCount = duplicates.size;
+  const statsText = `Showing ${occupied.length} / ${totalOccupied} occupied (${crocs.length} total records)${dupeSlotCount > 0 ? ` · ⚠ ${dupeSlotCount} slots with duplicates` : ''}`;
 
   function getCellColor(croc: CrocRecord): string {
     if (mode === 'health') {
