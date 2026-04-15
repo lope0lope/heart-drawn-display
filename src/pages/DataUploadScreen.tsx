@@ -35,21 +35,30 @@ export default function DataUploadScreen() {
     v.push({ ok: true, text: `Inspection date: ${result.inspectionDate}` });
     v.push({ ok: result.rows.length > 0, text: `${result.rows.length} records parsed` });
 
-    const tags = result.rows.map(r => r.tag);
-    const dupes = tags.filter((t, i) => tags.indexOf(t) !== i);
-    v.push({
-      ok: dupes.length === 0,
-      text: dupes.length === 0 ? 'No duplicate tag IDs' : `${new Set(dupes).size} duplicate tags found`,
+    // Check for duplicate tags with line numbers
+    const tagLines = new Map<string, number[]>();
+    result.rows.forEach(r => {
+      if (!tagLines.has(r.tag)) tagLines.set(r.tag, []);
+      tagLines.get(r.tag)!.push(r.csvRow);
     });
+    const dupeEntries = [...tagLines.entries()].filter(([_, lines]) => lines.length > 1);
+    if (dupeEntries.length === 0) {
+      v.push({ ok: true, text: 'No duplicate tag IDs' });
+    } else {
+      for (const [tag, lines] of dupeEntries) {
+        v.push({ ok: false, text: `Duplicate tag ${tag} on CSV rows ${lines.join(', ')}` });
+      }
+    }
 
     const withCull = result.rows.filter(r => r.cull);
     if (withCull.length > 0) {
       v.push({ ok: true, text: `${withCull.length} crocs with cull recommendations` });
     }
 
-    const withCondition = result.rows.filter(r => r.condition);
+    const withCondition = result.rows.filter(r => r.conditions.length > 0);
     if (withCondition.length > 0) {
-      v.push({ ok: true, text: `${withCondition.length} crocs with condition flags` });
+      const totalCodes = withCondition.reduce((s, r) => s + r.conditions.length, 0);
+      v.push({ ok: true, text: `${withCondition.length} crocs with ${totalCodes} condition flags` });
     }
 
     for (const w of result.warnings) {
@@ -67,60 +76,72 @@ export default function DataUploadScreen() {
     try {
       const { inspectionDate, rows } = parsed;
 
-      // Build upsert payloads — match by tag
+      // Build payloads with merged condition codes
       const crocPayloads = rows.map(r => {
-        const condCodes: string[] = [];
-        if (r.condition) condCodes.push(r.condition);
+        const condCodes: string[] = [...r.conditions];
         const cullCode = cullToConditionCode(r.cull);
         if (cullCode) condCodes.push(cullCode);
 
         return {
           tag: r.tag,
-          pen_id: r.pen, // pen number from CSV
+          pen_id: r.pen,
           belly_cm: r.belly_cm,
           grade: r.grade,
           condition_codes: condCodes,
           inspection_date: inspectionDate,
+          cull_schedule: r.cull || null,
         };
       });
 
-      // Upsert crocs in batches (merge on conflict by tag)
-      for (let i = 0; i < crocPayloads.length; i += 500) {
-        const batch = crocPayloads.slice(i, i + 500);
-        const { error } = await supabase.from('crocs').upsert(batch, { onConflict: 'tag' });
-        if (error) {
-          warnings++;
-          console.error('Upsert batch error:', error);
-        }
-      }
-
-      // Insert inspection records for crocs that have measurements
+      // Delete existing crocs with these tags first, then insert fresh
       const tags = rows.map(r => r.tag);
-      const { data: crocIds } = await supabase
+      
+      // Get existing croc IDs for these tags (to clean inspections)
+      const { data: existingCrocs } = await supabase
         .from('crocs')
         .select('id, tag')
         .in('tag', tags);
 
-      if (crocIds?.length) {
-        const tagToId = new Map(crocIds.map(c => [c.tag, c.id]));
-
-        // Delete existing inspections for this date if re-uploading
-        const idsToClean = [...tagToId.values()];
-        for (let i = 0; i < idsToClean.length; i += 500) {
-          const batch = idsToClean.slice(i, i + 500);
+      if (existingCrocs?.length) {
+        const existingIds = existingCrocs.map(c => c.id);
+        // Delete old inspections for this date
+        for (let i = 0; i < existingIds.length; i += 500) {
           await supabase
             .from('inspections')
             .delete()
-            .in('croc_id', batch)
+            .in('croc_id', existingIds.slice(i, i + 500))
             .eq('inspection_date', inspectionDate);
         }
+        // Delete old croc records
+        for (let i = 0; i < existingIds.length; i += 500) {
+          await supabase.from('crocs').delete().in('id', existingIds.slice(i, i + 500));
+        }
+      }
 
-        // Insert new inspection records
+      // Insert fresh croc records
+      for (let i = 0; i < crocPayloads.length; i += 500) {
+        const batch = crocPayloads.slice(i, i + 500);
+        const { error } = await supabase.from('crocs').insert(batch);
+        if (error) {
+          warnings++;
+          console.error('Insert batch error:', error);
+        }
+      }
+
+      // Fetch newly inserted croc IDs
+      const { data: newCrocs } = await supabase
+        .from('crocs')
+        .select('id, tag')
+        .in('tag', tags);
+
+      if (newCrocs?.length) {
+        const tagToId = new Map(newCrocs.map(c => [c.tag, c.id]));
+
+        // Insert inspection records
         const inspections = rows
           .filter(r => tagToId.has(r.tag))
           .map(r => {
-            const condCodes: string[] = [];
-            if (r.condition) condCodes.push(r.condition);
+            const condCodes: string[] = [...r.conditions];
             const cullCode = cullToConditionCode(r.cull);
             if (cullCode) condCodes.push(cullCode);
 
@@ -169,7 +190,6 @@ export default function DataUploadScreen() {
     try {
       const tags = parsed.rows.map(r => r.tag);
 
-      // Get croc IDs
       const { data: crocs } = await supabase
         .from('crocs')
         .select('id, tag')
@@ -177,13 +197,9 @@ export default function DataUploadScreen() {
 
       if (crocs?.length) {
         const ids = crocs.map(c => c.id);
-
-        // Delete inspections for these crocs
         for (let i = 0; i < ids.length; i += 500) {
           await supabase.from('inspections').delete().in('croc_id', ids.slice(i, i + 500));
         }
-
-        // Delete the crocs
         for (let i = 0; i < ids.length; i += 500) {
           await supabase.from('crocs').delete().in('id', ids.slice(i, i + 500));
         }
@@ -192,7 +208,6 @@ export default function DataUploadScreen() {
       queryClient.invalidateQueries();
       toast.success(`Deleted ${crocs?.length ?? 0} croc records and their inspections`);
 
-      // Log
       await supabase.from('upload_logs').insert({
         filename: `DELETE: ${fileName}`,
         record_count: crocs?.length ?? 0,
@@ -260,11 +275,11 @@ export default function DataUploadScreen() {
                 <span className="text-ct-accent">Row 1:</span> Inspection date, 2026/04/15<br />
                 <span className="text-ct-accent">Row 2:</span> (empty)<br />
                 <span className="text-ct-accent">Row 3:</span> Pen, ID, size, Condition, Last inspected, Cull, Rating<br />
-                <span className="text-ct-accent">Row 4+:</span> 150, 1112, 35, RTail, 2026/02/15, 1, 1
+                <span className="text-ct-accent">Row 4+:</span> 150, 1112, 35, "THChest,RTail", 2026/02/15, 1, 1
               </div>
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
                 <strong className="text-ct-text2">Cull values:</strong> 1 = now · NXT = next cycle · 2 = 2 cycles · 3 = 3 cycles<br />
-                <strong className="text-ct-text2">Condition:</strong> Uses condition code page naming (e.g. RTail, SSChest)<br />
+                <strong className="text-ct-text2">Condition:</strong> Comma-separated codes (e.g. THChest,RTail for two defects)<br />
                 <strong className="text-ct-text2">Re-upload:</strong> Uploading updated data for the same tags will overwrite existing records
               </div>
             </div>
@@ -357,7 +372,7 @@ export default function DataUploadScreen() {
                   <table className="border-collapse text-[11px] w-full">
                     <thead className="sticky top-0">
                       <tr className="bg-surface-3">
-                        {['Pen', 'Tag', 'Size', 'Condition', 'Cull', 'Grade'].map(h => (
+                        {['Row', 'Pen', 'Tag', 'Size', 'Conditions', 'Cull', 'Grade'].map(h => (
                           <th key={h} className="p-[5px_8px] border border-border text-ct-text3 font-mono-ibm text-[9px]">{h}</th>
                         ))}
                       </tr>
@@ -365,10 +380,17 @@ export default function DataUploadScreen() {
                     <tbody>
                       {rows.slice(0, 15).map((r, i) => (
                         <tr key={i}>
+                          <td className="p-[5px_8px] border border-border text-ct-text3 font-mono-ibm text-[10px]">{r.csvRow}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2">{r.pen}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2 font-mono-ibm">{r.tag}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2">{r.belly_cm ?? '—'}</td>
-                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.condition || '—'}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2">
+                            {r.conditions.length > 0
+                              ? r.conditions.map((c, ci) => (
+                                  <span key={ci} className="inline-block px-1 py-px mr-1 rounded-sm text-[10px] font-mono-ibm border border-border bg-surface-2">{c}</span>
+                                ))
+                              : '—'}
+                          </td>
                           <td className={`p-[5px_8px] border border-border font-mono-ibm font-medium ${
                             r.cull === '1' || r.cull.toUpperCase() === 'NXT' ? 'text-ct-danger' :
                             r.cull === '2' ? 'text-ct-warn' :

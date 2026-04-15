@@ -112,19 +112,27 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
   const dataRows = allRows.slice(headerIdx + 1);
   const rows: ParsedInspectionRow[] = [];
 
-  for (const r of dataRows) {
+  for (let di = 0; di < dataRows.length; di++) {
+    const r = dataRows[di];
     const cells = r.map(c => String(c ?? '').trim());
     const tag = idCol >= 0 ? cells[idCol] : '';
     if (!tag) continue; // skip empty rows
+
+    // Parse conditions: split by comma, semicolon, or space-separated codes
+    const rawCond = condCol >= 0 ? cells[condCol] : '';
+    const conditions = rawCond
+      ? rawCond.split(/[,;]+/).map(s => s.trim()).filter(Boolean)
+      : [];
 
     rows.push({
       pen: penCol >= 0 ? cells[penCol] : '',
       tag,
       belly_cm: sizeCol >= 0 ? (parseFloat(cells[sizeCol]) || null) : null,
-      condition: condCol >= 0 ? cells[condCol] : '',
+      conditions,
       last_inspected: lastCol >= 0 ? cells[lastCol] : '',
       cull: cullCol >= 0 ? cells[cullCol] : '',
       grade: ratingCol >= 0 ? (parseInt(cells[ratingCol]) || null) : null,
+      csvRow: headerIdx + 2 + di, // 1-based CSV row number
     });
   }
 
