@@ -31,18 +31,39 @@ export function getConditionColor(code: string, conditionCodes: Array<{ code: st
   return `hsl(var(${cond.color_var}))`;
 }
 
-/** Build a grid structure for pen map from croc records */
+/** Build a grid structure for pen map from croc records.
+ *  When multiple crocs share the same slot, keep the one with
+ *  the latest inspection_date (ties broken by highest belly_cm, then highest id).
+ *  Also tracks duplicate counts per slot.
+ */
 export function buildPenGrid(crocs: CrocRecord[]) {
   const lines = [...new Set(crocs.map(c => c.line))].sort();
   const maxSlot = Math.max(...crocs.map(c => c.pen_slot), 0);
-  
+
   const grid: Map<string, Map<number, CrocRecord>> = new Map();
+  const duplicates: Map<string, number> = new Map(); // "line-slot" -> count
+
   for (const c of crocs) {
     if (!grid.has(c.line)) grid.set(c.line, new Map());
-    grid.get(c.line)!.set(c.pen_slot, c);
+    const lineMap = grid.get(c.line)!;
+    const key = `${c.line}-${c.pen_slot}`;
+    const existing = lineMap.get(c.pen_slot);
+
+    if (existing) {
+      duplicates.set(key, (duplicates.get(key) ?? 1) + 1);
+      // Keep the record with newer inspection_date, then higher belly, then higher id
+      const cmpDate = (c.inspection_date ?? '').localeCompare(existing.inspection_date ?? '');
+      if (cmpDate > 0 ||
+          (cmpDate === 0 && (c.belly_cm ?? 0) > (existing.belly_cm ?? 0)) ||
+          (cmpDate === 0 && (c.belly_cm ?? 0) === (existing.belly_cm ?? 0) && c.id > existing.id)) {
+        lineMap.set(c.pen_slot, c);
+      }
+    } else {
+      lineMap.set(c.pen_slot, c);
+    }
   }
-  
-  return { lines, maxSlot, grid };
+
+  return { lines, maxSlot, grid, duplicates };
 }
 
 /** Count crocs per size band */

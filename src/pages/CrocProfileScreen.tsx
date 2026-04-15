@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
+import { useAllCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
 import { useFeedRecords } from '@/hooks/useFeedData';
 import { useGrowthRates } from '@/hooks/useCullData';
 import { sizeBand } from '@/lib/crocUtils';
@@ -13,9 +13,7 @@ interface CrocProfileProps {
 export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   const [searchTag, setSearchTag] = useState(initialSearch ?? '');
   const [selectedCroc, setSelectedCroc] = useState<CrocRecord | null>(null);
-  const [pen, setPen] = useState('GH1');
-  const { data: crocs } = useCrocs(pen);
-  const { data: crocs2 } = useCrocs('GH2');
+  const { data: allCrocs } = useAllCrocs();
   const { data: inspections, isLoading: loadingHistory } = useInspectionHistory(selectedCroc?.id);
   const { data: feedRecords } = useFeedRecords(selectedCroc?.pen_id);
   const { data: growthRates } = useGrowthRates();
@@ -27,19 +25,16 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   }, [initialSearch]);
 
   useEffect(() => {
-    if (!searchTag.trim() || !crocs) return;
-    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
+    if (!searchTag.trim() || !allCrocs) return;
     const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
     if (found) {
-      setPen(found.pen_id);
       setSelectedCroc(found);
     }
-  }, [crocs, crocs2, searchTag]);
+  }, [allCrocs, searchTag]);
 
   const handleSearch = () => {
     if (!searchTag.trim()) return;
-    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
-    const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
+    const found = (allCrocs ?? []).find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
     setSelectedCroc(found ?? null);
   };
 
@@ -82,10 +77,6 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   return (
     <div>
       <div className="flex gap-2.5 mb-4 items-center">
-        <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={pen} onChange={e => { setPen(e.target.value); setSelectedCroc(null); }}>
-          <option value="GH1">GH1</option>
-          <option value="GH2">GH2</option>
-        </select>
         <input
           className="bg-surface-2 border border-border text-ct-text px-3.5 py-2 font-mono-ibm text-xs rounded-sm w-[260px] outline-none focus:border-ct-accent"
           placeholder="Search by Tag # or ID…"
@@ -94,14 +85,14 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
         />
         <button onClick={handleSearch} className="bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] rounded-sm cursor-pointer hover:border-ct-accent hover:bg-surface-2">Search</button>
-        {croc && <span className="text-[11px] text-ct-text3 ml-2 font-mono-ibm">Showing: {croc.tag ? `Tag #${croc.tag}` : `ID ${croc.id}`}</span>}
+        {croc && <span className="text-[11px] text-ct-text3 ml-2 font-mono-ibm">Showing: {croc.tag ? `Tag #${croc.tag}` : `ID ${croc.id}`} · {croc.pen_id} {croc.line}-{croc.pen_slot}</span>}
       </div>
 
       {!croc ? (
         <div className="bg-surface border border-border rounded p-8 text-center">
           <div className="text-ct-text3 text-xs font-mono-ibm mb-2">Enter a tag number or croc ID to view profile</div>
           <div className="text-ct-text3 text-[10px] font-mono-ibm">
-            {crocs ? `${crocs.filter(c => c.belly_cm).length} crocs loaded in ${pen}` : 'Loading…'}
+            {allCrocs ? `${allCrocs.filter(c => c.belly_cm).length} crocs loaded across all pens` : 'Loading…'}
           </div>
         </div>
       ) : (
