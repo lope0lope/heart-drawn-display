@@ -132,31 +132,28 @@ export default function DashboardScreen() {
         <KPI label="Next Inspection" value={daysUntilNext !== null ? `${daysUntilNext}d` : '—'} sub={daysUntilNext !== null ? (daysUntilNext <= 2 ? 'Imminent' : 'Scheduled') : 'No data'} delta={latestInspection ? `Last: ${latestInspection.toLocaleDateString()}` : ''} variant={daysUntilNext !== null && daysUntilNext <= 2 ? 'warn' : 'info'} />
       </div>
 
-      {/* Cull Readiness */}
+      {/* Cull Stock by Horizon */}
       <div className="bg-surface border border-border rounded overflow-hidden mb-3.5">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
-          <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Cull Readiness — Worker Assessment vs AI Suggestion</span>
+          <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Stock Available to Cull — All Size Bands</span>
           <Pill>Computed from live data</Pill>
         </div>
-        <div className="grid grid-cols-3 divide-x divide-border">
+        <div className="grid grid-cols-4 divide-x divide-border">
           {(cullProjections?.projections ?? []).map((p, i) => {
-            const pct = p.total > 0 ? Math.round((p.cullReady / p.total) * 100) : 0;
+            const totalStock = p.distribution.reduce((a, b) => a + b, 0);
             return (
               <div key={i} className="px-[18px] py-4">
                 <div className="font-mono-ibm text-[10px] text-ct-text3 tracking-wider uppercase mb-1">{p.label}</div>
                 <div className="flex items-baseline gap-2">
-                  <span className={`font-display text-[36px] font-semibold leading-none ${p.cullReady > 0 ? 'text-ct-good' : 'text-ct-text3'}`}>{p.cullReady}</span>
-                  <span className="text-xs text-ct-text3">of {p.total} ({pct}%)</span>
-                </div>
-                <div className="h-[3px] bg-surface-3 rounded-sm mt-2 overflow-hidden">
-                  <div className="h-full rounded-sm" style={{ width: `${pct}%`, background: p.cullReady > 0 ? 'hsl(var(--ct-good))' : 'hsl(var(--ct-text3))' }} />
+                  <span className={`font-display text-[36px] font-semibold leading-none ${totalStock > 0 ? 'text-ct-good' : 'text-ct-text3'}`}>{totalStock}</span>
+                  <span className="text-xs text-ct-text3">across {p.distribution.filter(d => d > 0).length} bands</span>
                 </div>
               </div>
             );
           })}
         </div>
         <div className="px-[18px] py-2.5 font-mono-ibm text-[9px] text-ct-text3 border-t border-border">
-          Cull threshold: 54 cm belly width. Projections use non-linear growth rates from inspection history.
+          All size bands are cullable. Projections use non-linear growth rates from inspection history.
         </div>
       </div>
 
