@@ -99,7 +99,7 @@ export default function PenMapScreen() {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading pen data…</div>;
   }
 
-  const { lines, maxSlot, grid } = buildPenGrid(crocs);
+  const { lines, maxSlot, grid, duplicates } = buildPenGrid(crocs);
   const displayLines = lineFilter === 'all' ? lines : lines.filter(l => l === lineFilter);
   const occupied = filteredCrocs.filter(c => c.belly_cm !== null);
   const totalOccupied = crocs.filter(c => c.belly_cm !== null).length;
