@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
+import { useAllCrocs } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, countSizeBands, getOccupied } from '@/lib/crocUtils';
 
 export interface CullRecord {
@@ -12,7 +12,7 @@ export interface CullRecord {
   created_at: string;
 }
 
-/** Fetch all cull records — returns empty array if table doesn't exist yet */
+/** Fetch all cull records */
 export function useCullRecords() {
   return useQuery({
     queryKey: ['cull_records'],
@@ -22,8 +22,7 @@ export function useCullRecords() {
         .select('*')
         .order('cull_date', { ascending: false });
       if (error) {
-        // Table may not exist yet
-        console.warn('cull_records query failed (table may not exist):', error.message);
+        console.warn('cull_records query failed:', error.message);
         return [] as CullRecord[];
       }
       return (data ?? []) as CullRecord[];
@@ -31,11 +30,11 @@ export function useCullRecords() {
   });
 }
 
-/** YTD culled counts per size band (6 bands) */
+/** YTD culled counts per size band */
 export function useYtdCulled() {
   const { data: records, isLoading } = useCullRecords();
   const year = new Date().getFullYear();
-  
+
   const counts = [0, 0, 0, 0, 0, 0];
   if (records) {
     for (const r of records) {
@@ -48,7 +47,12 @@ export function useYtdCulled() {
   return { ytdCulled: counts, isLoading };
 }
 
-/** Compute average growth rates per size band from inspection history */
+/**
+ * Compute NON-LINEAR growth rates per size band from inspection history.
+ * Groups consecutive inspections by croc, measures cm gained per ~2-month cycle,
+ * and buckets by the starting size band. This captures that smaller crocs grow
+ * faster than larger ones.
+ */
 export function useGrowthRates() {
   return useQuery({
     queryKey: ['growth_rates'],
@@ -59,27 +63,32 @@ export function useGrowthRates() {
         .not('belly_cm', 'is', null)
         .order('croc_id')
         .order('inspection_date', { ascending: true });
-      
-      // Default growth rates if no inspection data available
-      const defaults = [5.2, 4.8, 4.5, 4.1, 3.6, 2.9];
+
+      // Defaults based on typical saltwater croc growth curves (cm per 2-month cycle)
+      // Smaller crocs grow much faster; larger crocs slow significantly
+      const defaults = [3.8, 3.2, 2.6, 2.0, 1.4, 0.8];
       if (error || !data || data.length === 0) return defaults;
 
       const deltas: number[][] = [[], [], [], [], [], []];
-      const rows = data;
-      
       let i = 0;
-      while (i < rows.length) {
-        const crocId = rows[i].croc_id;
+      while (i < data.length) {
+        const crocId = data[i].croc_id;
         const crocRows: { belly_cm: number; inspection_date: string }[] = [];
-        while (i < rows.length && rows[i].croc_id === crocId) {
-          if (rows[i].belly_cm != null) crocRows.push(rows[i] as any);
+        while (i < data.length && data[i].croc_id === crocId) {
+          if (data[i].belly_cm != null) crocRows.push(data[i] as any);
           i++;
         }
         for (let j = 1; j < crocRows.length; j++) {
           const delta = crocRows[j].belly_cm - crocRows[j - 1].belly_cm;
           const band = sizeBand(crocRows[j - 1].belly_cm);
           if (band !== null && delta > 0) {
-            deltas[band].push(delta);
+            // Normalize to ~2-month intervals
+            const days = (new Date(crocRows[j].inspection_date).getTime() -
+              new Date(crocRows[j - 1].inspection_date).getTime()) / 86400000;
+            if (days > 10 && days < 200) {
+              const normalized = (delta / days) * 60; // cm per 60 days
+              deltas[band].push(normalized);
+            }
           }
         }
       }
@@ -93,50 +102,70 @@ export function useGrowthRates() {
   });
 }
 
-/** Compute cull readiness from live data */
-export function useCullReadiness() {
+const CULL_THRESHOLD = 54;
+
+/**
+ * Project each croc forward through cycles using non-linear growth rates.
+ * As a croc grows into a new size band, its growth rate changes to match
+ * that band's rate — capturing the natural slowdown.
+ */
+export function projectBelly(currentCm: number, rates: number[], cycles: number): number {
+  let cm = currentCm;
+  for (let c = 0; c < cycles; c++) {
+    const band = sizeBand(cm);
+    const rate = band !== null ? rates[band] : rates[rates.length - 1];
+    cm += rate;
+  }
+  return cm;
+}
+
+/** Compute cull-ready counts for now, +1 cycle, +2 cycles */
+export function useCullProjections() {
   const { data: allCrocs } = useAllCrocs();
   const { data: growthRates } = useGrowthRates();
-  
+
   if (!allCrocs || !growthRates) return null;
 
   const occupied = getOccupied(allCrocs);
-  const rates = growthRates;
 
+  // For each cycle horizon, count crocs that will be ≥54cm
   const horizons = [
-    { horizon: 'Now', label: 'Cull immediately', color: 'ct-good' },
-    { horizon: 'Next Cycle', label: 'Ready in ~2 months', color: 'ct-info' },
-    { horizon: '+2 Cycles', label: 'Ready in ~4 months', color: 'ct-accent' },
-    { horizon: '+3 Cycles', label: 'Ready in ~6 months', color: 'ct-text2' },
+    { label: 'Now', cycles: 0 },
+    { label: 'Next Cycle (~2 mo)', cycles: 1 },
+    { label: '+2 Cycles (~4 mo)', cycles: 2 },
   ];
 
-  const results = horizons.map((h, hIdx) => {
-    let workerCount = 0;
-    let aiCount = 0;
+  const projections = horizons.map(h => {
+    const byBand = [0, 0, 0, 0, 0, 0];
+    let cullReady = 0;
+    const cullReadyByBand = [0, 0, 0, 0, 0, 0];
 
     for (const c of occupied) {
       if (!c.belly_cm) continue;
-      const currentBand = sizeBand(c.belly_cm) ?? 0;
-      const projected = c.belly_cm + rates[currentBand] * hIdx;
-      
-      if (projected >= 35) workerCount++;
-      
-      if (projected >= 35) {
-        const hasBlockingCondition = c.condition_codes.some(code => 
-          ['MN', 'DS', 'IN'].includes(code)
-        );
-        if (!hasBlockingCondition) aiCount++;
-        else if (hIdx >= 2) aiCount++;
+      const projected = projectBelly(c.belly_cm, growthRates, h.cycles);
+      const band = sizeBand(projected);
+      if (band !== null) byBand[band]++;
+
+      if (projected >= CULL_THRESHOLD) {
+        cullReady++;
+        const currentBand = sizeBand(c.belly_cm);
+        if (currentBand !== null) cullReadyByBand[currentBand]++;
       }
     }
 
-    return { ...h, worker: workerCount, ai: aiCount };
+    return {
+      ...h,
+      distribution: byBand,
+      cullReady,
+      cullReadyByBand,
+      total: occupied.length,
+    };
   });
 
-  return results;
+  return { projections, rates: growthRates, occupied, totalStock: occupied.length };
 }
 
-/** Generate AI advisory text from live data */
+/** AI advisory based on cull projections */
 export function useAiAdvisory() {
   const { data: allCrocs } = useAllCrocs();
   const { data: growthRates } = useGrowthRates();
@@ -150,30 +179,43 @@ export function useAiAdvisory() {
 
   const advisories: { icon: string; color: string; text: string }[] = [];
 
+  // Count how many are already at cull threshold
+  const cullNow = occupied.filter(c => c.belly_cm && c.belly_cm >= CULL_THRESHOLD).length;
+  if (cullNow > 0) {
+    advisories.push({
+      icon: '✓',
+      color: 'ct-good',
+      text: `${cullNow} crocs at ≥${CULL_THRESHOLD}cm — ready for immediate cull.`,
+    });
+  }
+
+  // Check upcoming supply per band
   SIZE_BANDS.forEach((band, i) => {
     const remaining = targets[i] - ytdCulled[i];
     const surplus = now[i] - remaining;
 
     if (surplus > 20) {
       advisories.push({
-        icon: '✓',
-        color: 'ct-good',
-        text: `${band.range} — cull ${Math.min(surplus, now[i])} units now. Surplus will exceed pen capacity.`,
+        icon: '⚠',
+        color: 'ct-warn',
+        text: `${band.range} — surplus of ${surplus}. Consider accelerating cull schedule.`,
       });
     } else if (remaining > now[i] * 1.5 && remaining > 20) {
       advisories.push({
         icon: '⚠',
-        color: 'ct-warn',
-        text: `${band.range} — hold. Projected shortfall of ${remaining - now[i]} units vs annual target. Do not cull early.`,
-      });
-    } else {
-      advisories.push({
-        icon: 'ℹ',
-        color: 'ct-info',
-        text: `${band.range} — on track. Allow natural progression.`,
+        color: 'ct-danger',
+        text: `${band.range} — shortfall risk. ${remaining - now[i]} units below target. Hold stock.`,
       });
     }
   });
+
+  if (advisories.length === 0) {
+    advisories.push({
+      icon: 'ℹ',
+      color: 'ct-info',
+      text: 'All size bands on track. Continue standard growth cycles.',
+    });
+  }
 
   return advisories;
 }
