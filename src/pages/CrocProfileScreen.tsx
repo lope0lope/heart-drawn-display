@@ -25,19 +25,16 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   }, [initialSearch]);
 
   useEffect(() => {
-    if (!searchTag.trim() || !crocs) return;
-    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
+    if (!searchTag.trim() || !allCrocs) return;
     const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
     if (found) {
-      setPen(found.pen_id);
       setSelectedCroc(found);
     }
-  }, [crocs, crocs2, searchTag]);
+  }, [allCrocs, searchTag]);
 
   const handleSearch = () => {
     if (!searchTag.trim()) return;
-    const allCrocs = [...(crocs ?? []), ...(crocs2 ?? [])];
-    const found = allCrocs.find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
+    const found = (allCrocs ?? []).find(c => c.tag === searchTag.trim() || c.id.toString() === searchTag.trim());
     setSelectedCroc(found ?? null);
   };
 
