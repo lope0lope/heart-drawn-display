@@ -304,12 +304,15 @@ export default function PenMapScreen() {
                     const bg = getCellColor(croc);
                     const cstr = croc.condition_codes.length ? croc.condition_codes.join(' · ') : 'Clear';
                     const tagStr = croc.tag ? `Tag: #${croc.tag}` : `ID: ${croc.id}`;
+                    const dupeKey = `${line}-${s}`;
+                    const dupeCount = duplicates.get(dupeKey);
+                    const dupeNote = dupeCount ? `\n⚠ ${dupeCount} crocs share this slot` : '';
                     cells.push(
                       <div
                         key={`${line}-${s}`}
-                        className={`w-[13px] h-[13px] rounded-[1px] cursor-pointer transition-transform hover:scale-[1.7] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.4] z-10' : ''}`}
+                        className={`w-[13px] h-[13px] rounded-[1px] cursor-pointer transition-transform hover:scale-[1.7] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.4] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
                         style={{ background: bg }}
-                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}` })}
+                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}` })}
                         onMouseLeave={() => setTooltip(null)}
                       />
                     );
