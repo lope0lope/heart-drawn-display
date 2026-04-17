@@ -127,10 +127,16 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
       return croc.condition_codes.length === 0 ? '#2e5e32' : '#d4892a';
     } else if (mode === 'condition') {
       if (croc.condition_codes.length === 0) return '#2e5e32';
-      const vis = croc.condition_codes.filter(c => activeFilters.has(c));
+      // Match by parsed TYPE (e.g. "THChest" -> "TH") against activeFilters
+      // which holds base type codes from condition_codes table.
+      const vis = croc.condition_codes.filter(code => {
+        const t = parseConditionCode(code).type;
+        return activeFilters.has(code) || activeFilters.has(t);
+      });
       if (vis.length === 0) return 'hsl(var(--surface3))';
-      const cd = conditionDefs?.find(c => c.code === vis[0]);
-      return cd ? `hsl(var(${cd.color_var}))` : '#2e5e32';
+      const firstType = parseConditionCode(vis[0]).type;
+      const cd = conditionDefs?.find(c => c.code === firstType) ?? conditionDefs?.find(c => c.code === vis[0]);
+      return cd ? `hsl(var(${cd.color_var}))` : '#d4892a';
     } else {
       if (!croc.belly_cm) return '#565250';
       const b = sizeBand(croc.belly_cm);
