@@ -11,7 +11,11 @@ const BATCH_RANGES = [
   { label: '7401–8000', min: 7401, max: 8000 },
 ];
 
-export default function PenMapScreen() {
+interface PenMapScreenProps {
+  onOpenCroc?: (tag: string) => void;
+}
+
+export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [pen, setPen] = useState('GH1');
   const [mode, setMode] = useState('health');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
@@ -99,7 +103,12 @@ export default function PenMapScreen() {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading pen data…</div>;
   }
 
-  const { lines, maxSlot, grid, duplicates } = buildPenGrid(crocs);
+  // Build grid from full pen for layout dims & duplicate counts
+  const fullGrid = buildPenGrid(crocs);
+  const { lines, maxSlot, duplicates } = fullGrid;
+  // Rebuild grid from filteredCrocs so condition/size/etc. filters actually
+  // surface the matching record at each slot instead of the latest one.
+  const { grid } = buildPenGrid(filteredCrocs.length ? filteredCrocs : crocs);
   const displayLines = lineFilter === 'all' ? lines : lines.filter(l => l === lineFilter);
   const occupied = filteredCrocs.filter(c => c.belly_cm !== null);
   const totalOccupied = crocs.filter(c => c.belly_cm !== null).length;
@@ -285,22 +294,19 @@ export default function PenMapScreen() {
 
         {/* Pen Grid */}
         <div className="bg-surface border border-border rounded p-4 overflow-auto relative" onMouseLeave={() => setTooltip(null)}>
-          <div className="flex gap-0.5">
-            <div className="flex flex-col gap-0.5">
-              {displayLines.map(r => <div key={r} className="font-mono-ibm text-[9px] text-ct-text3 flex items-center pr-[5px] min-w-[14px] h-[13px]">{r}</div>)}
+          <div className="flex gap-[2px]">
+            <div className="flex flex-col gap-[2px]">
+              {displayLines.map(r => <div key={r} className="font-mono-ibm text-[11px] text-ct-text3 flex items-center justify-end pr-1.5 min-w-[18px] h-[22px]">{r}</div>)}
             </div>
-            <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${maxSlot}, 13px)` }}>
+            <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${maxSlot}, 22px)` }}>
               {displayLines.flatMap(line => {
                 const cells = [];
                 for (let s = 1; s <= maxSlot; s++) {
                   const croc = grid.get(line)?.get(s);
-                  const isFiltered = croc && filteredCrocs.includes(croc);
                   const isHighlighted = croc && highlightedIds.has(croc.id);
 
                   if (!croc || croc.belly_cm === null) {
-                    cells.push(<div key={`${line}-${s}`} className={`w-[13px] h-[13px] rounded-[1px] bg-surface-3 ${showEmpty ? 'opacity-20' : 'opacity-5'}`} />);
-                  } else if (!isFiltered && hasActiveFilters) {
-                    cells.push(<div key={`${line}-${s}`} className="w-[13px] h-[13px] rounded-[1px] bg-surface-3 opacity-10" />);
+                    cells.push(<div key={`${line}-${s}`} className={`w-[22px] h-[22px] rounded-[2px] bg-surface-3 ${showEmpty ? 'opacity-20' : 'opacity-5'}`} />);
                   } else {
                     const bg = getCellColor(croc);
                     const cstr = croc.condition_codes.length ? croc.condition_codes.join(' · ') : 'Clear';
@@ -311,10 +317,13 @@ export default function PenMapScreen() {
                     cells.push(
                       <div
                         key={`${line}-${s}`}
-                        className={`w-[13px] h-[13px] rounded-[1px] cursor-pointer transition-transform hover:scale-[1.7] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.4] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
+                        className={`w-[22px] h-[22px] rounded-[2px] cursor-pointer transition-transform hover:scale-[1.4] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.2] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
                         style={{ background: bg }}
-                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}` })}
+                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}\n\nClick to open profile` })}
                         onMouseLeave={() => setTooltip(null)}
+                        onClick={() => {
+                          if (onOpenCroc && croc.tag) onOpenCroc(croc.tag);
+                        }}
                       />
                     );
                   }

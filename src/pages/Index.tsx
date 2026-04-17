@@ -40,6 +40,8 @@ export default function Index() {
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
           {screen === 'croc' ? (
             <CrocProfileScreen initialSearch={searchQuery} />
+          ) : screen === 'penmap' ? (
+            <PenMapScreen onOpenCroc={handleSearch} />
           ) : (
             <Screen />
           )}

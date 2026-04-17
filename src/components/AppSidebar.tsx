@@ -12,8 +12,6 @@ const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: s
   { section: 'Records', id: 'feed', icon: '⊿', label: 'Feed Reports' },
   { id: 'upload', icon: '↑', label: 'Data Upload' },
   { id: 'croc', icon: '◇', label: 'Croc Profiles' },
-  { id: 'analytics', icon: '▦', label: 'Analytics' },
-  { section: 'System', id: 'codes', icon: '≡', label: 'Condition Codes' },
 ];
 
 export default function AppSidebar({ activeScreen, onNavigate }: SidebarProps) {

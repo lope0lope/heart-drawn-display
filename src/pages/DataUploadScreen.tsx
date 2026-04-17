@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { parseInspectionFile, cullToConditionCode, type ParsedInspectionRow, type ParsedInspectionFile } from '@/lib/inspectionParser';
 import { useQueryClient } from '@tanstack/react-query';
+import CrocDatasetTable from '@/components/CrocDatasetTable';
 
 interface ValidationResult {
   ok: boolean;
@@ -247,7 +248,8 @@ export default function DataUploadScreen() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-4">
       <div className="flex flex-col gap-3.5">
         {/* Upload Zone */}
         <div className="bg-surface border border-border rounded overflow-hidden">
@@ -485,6 +487,8 @@ export default function DataUploadScreen() {
           </div>
         </div>
       </div>
+      </div>
+      <CrocDatasetTable />
     </div>
   );
 }

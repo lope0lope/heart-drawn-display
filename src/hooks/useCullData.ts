@@ -150,7 +150,7 @@ export function useCullProjections() {
     return {
       ...h,
       distribution: byBand,
-      total: occupied.length,
+      total: byBand.reduce((a, b) => a + b, 0),
     };
   });
 
