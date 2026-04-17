@@ -260,10 +260,28 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
               <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Condition</label>
               <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)}>
                 <option value="all">All</option>
-                {penConditions.map(code => {
-                  const def = conditionDefs?.find(c => c.code === code);
-                  return <option key={code} value={code}>{code}{def ? ` — ${def.name}` : ''}</option>;
-                })}
+                {conditionFilterGroups.types.length > 0 && (
+                  <optgroup label="By Type (e.g. TH, R)">
+                    {conditionFilterGroups.types.map(t => (
+                      <option key={`t-${t}`} value={t}>{t} — any location</option>
+                    ))}
+                  </optgroup>
+                )}
+                {conditionFilterGroups.locations.length > 0 && (
+                  <optgroup label="By Location">
+                    {conditionFilterGroups.locations.map(l => (
+                      <option key={`l-${l}`} value={l}>{l} — any type</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Exact Code">
+                  {conditionFilterGroups.full.map(code => {
+                    const def = conditionDefs?.find(c => c.code === code);
+                    const parsed = parseConditionCode(code);
+                    const label = def ? `${code} — ${def.name}` : (parsed.location ? `${code} (${parsed.type} on ${parsed.location})` : code);
+                    return <option key={code} value={code}>{label}</option>;
+                  })}
+                </optgroup>
               </select>
             </div>
             <label className="flex items-center gap-1.5 cursor-pointer select-none pb-[1px]">
