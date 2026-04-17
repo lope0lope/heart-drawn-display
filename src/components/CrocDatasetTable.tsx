@@ -308,6 +308,50 @@ export default function CrocDatasetTable() {
                       </div>
                     </td>
                   </tr>
+                  {isExpanded && (
+                    <tr key={`${c.id}-history`} className="bg-surface-2/40">
+                      <td colSpan={10} className="p-[6px_18px]">
+                        <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-1.5">Inspection History · {history.length} record{history.length === 1 ? '' : 's'}</div>
+                        {historyLoading ? (
+                          <div className="text-ct-text3 font-mono-ibm text-[10px] py-2">Loading…</div>
+                        ) : history.length === 0 ? (
+                          <div className="text-ct-text3 font-mono-ibm text-[10px] py-2">No inspection history.</div>
+                        ) : (
+                          <table className="w-full text-[10px] border-collapse">
+                            <thead>
+                              <tr className="text-ct-text3 font-mono-ibm">
+                                <th className="text-left p-[3px_6px] border-b border-border">Date</th>
+                                <th className="text-left p-[3px_6px] border-b border-border">Belly cm</th>
+                                <th className="text-left p-[3px_6px] border-b border-border">Conditions</th>
+                                <th className="text-right p-[3px_6px] border-b border-border w-[40px]"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {history.map(h => (
+                                <tr key={h.id} className="border-b border-border last:border-b-0">
+                                  <td className="p-[3px_6px] text-ct-text2 font-mono-ibm">{h.inspection_date}</td>
+                                  <td className="p-[3px_6px] text-ct-text2 font-mono-ibm">{h.belly_cm ?? '—'}</td>
+                                  <td className="p-[3px_6px] text-ct-text2">
+                                    {h.condition_codes.length
+                                      ? h.condition_codes.map((code, i) => (
+                                          <span key={i} className="inline-block px-1 py-px mr-1 rounded-sm text-[9px] font-mono-ibm border border-border bg-surface-3">{code}</span>
+                                        ))
+                                      : <span className="text-ct-text3">—</span>}
+                                  </td>
+                                  <td className="p-[3px_6px] text-right">
+                                    <button onClick={() => deleteInspection(h.id)} disabled={busy} className="text-ct-danger hover:text-ct-danger/80 disabled:opacity-50" title="Delete this inspection">
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 );
               })}
             </tbody>
