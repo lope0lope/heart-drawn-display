@@ -1,34 +1,102 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAllCrocs, type CrocRecord } from '@/hooks/useCrocs';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Pencil, Trash2, Save, X, Search } from 'lucide-react';
+import { Pencil, Trash2, Save, X, Search, ChevronDown, ChevronRight } from 'lucide-react';
+
+interface InspectionRow {
+  id: number;
+  croc_id: number;
+  inspection_date: string;
+  belly_cm: number | null;
+  condition_codes: string[];
+}
 
 /**
  * Live, editable dataset visualiser for all croc records.
- * Supports inline edit + delete with optimistic refresh.
+ * - Inline edit / delete on each croc.
+ * - Date-range filter narrows which crocs are shown (any croc with at least
+ *   one inspection in range).
+ * - Expand a row to view + delete individual historical inspections.
  */
 export default function CrocDatasetTable() {
   const { data: crocs, isLoading } = useAllCrocs();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [penFilter, setPenFilter] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Partial<CrocRecord>>({});
   const [busy, setBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [history, setHistory] = useState<InspectionRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [inRangeIds, setInRangeIds] = useState<Set<number> | null>(null);
+
+  // Resolve date-range to a set of croc IDs that have inspections in range.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!dateFrom && !dateTo) { setInRangeIds(null); return; }
+      let q = supabase.from('inspections').select('croc_id');
+      if (dateFrom) q = q.gte('inspection_date', dateFrom);
+      if (dateTo) q = q.lte('inspection_date', dateTo);
+      const { data } = await q;
+      if (!active) return;
+      setInRangeIds(new Set((data ?? []).map((r: any) => r.croc_id)));
+    })();
+    return () => { active = false; };
+  }, [dateFrom, dateTo]);
 
   const filtered = useMemo(() => {
     if (!crocs) return [];
     const q = search.trim().toLowerCase();
     return crocs.filter(c => {
       if (penFilter !== 'all' && c.pen_id !== penFilter) return false;
+      if (inRangeIds && !inRangeIds.has(c.id)) return false;
       if (!q) return true;
       return (c.tag ?? '').toLowerCase().includes(q)
         || `${c.line}-${c.pen_slot}`.toLowerCase().includes(q)
         || c.condition_codes.join(',').toLowerCase().includes(q);
     });
-  }, [crocs, search, penFilter]);
+  }, [crocs, search, penFilter, inRangeIds]);
+
+  const toggleExpand = async (crocId: number) => {
+    if (expandedId === crocId) { setExpandedId(null); setHistory([]); return; }
+    setExpandedId(crocId);
+    setHistoryLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('inspections')
+        .select('*')
+        .eq('croc_id', crocId)
+        .order('inspection_date', { ascending: false });
+      if (error) throw error;
+      setHistory((data ?? []) as InspectionRow[]);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const deleteInspection = async (insId: number) => {
+    if (!confirm('Delete this inspection record?')) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.from('inspections').delete().eq('id', insId);
+      if (error) throw error;
+      setHistory(h => h.filter(x => x.id !== insId));
+      toast.success('Inspection deleted');
+      queryClient.invalidateQueries();
+    } catch (err: any) {
+      toast.error(err.message || 'Delete failed');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const startEdit = (c: CrocRecord) => {
     setEditingId(c.id);
