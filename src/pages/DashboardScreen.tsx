@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied, sizeBand } from '@/lib/crocUtils';
 import { useCullProjections, useAiAdvisory } from '@/hooks/useCullData';
@@ -52,6 +53,7 @@ export default function DashboardScreen() {
   const { data: conditionDefs } = useConditionCodes();
   const { data: uploadLogs } = useUploadLogs();
   const [treatmentOpen, setTreatmentOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const cullProjections = useCullProjections();
   const aiAdvisory = useAiAdvisory();
 
@@ -106,22 +108,42 @@ export default function DashboardScreen() {
 
   return (
     <div>
-      {/* Cluster alerts */}
-      {clusterAlerts.length > 0 && (
-        <div className="mb-4 flex flex-col gap-1.5">
-          {clusterAlerts.slice(0, 5).map((a, i) => (
-            <NoteBox key={i} variant={a.severity}>
-              <strong>{a.severity === 'danger' ? '⚠ ALERT:' : '⊙ WATCH:'}</strong> {a.text}
-            </NoteBox>
-          ))}
-        </div>
-      )}
-
-      {clusterAlerts.length === 0 && (
-        <NoteBox>
-          <strong>No condition clusters detected.</strong> {occupied.length} crocs tracked across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} individual condition flags active.` : 'All clear.'}
-        </NoteBox>
-      )}
+      {/* Cluster alerts — collapsible */}
+      <div className="mb-4 bg-surface border border-border rounded overflow-hidden">
+        <button
+          onClick={() => setAlertsOpen(o => !o)}
+          className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-surface-2 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            {alertsOpen ? <ChevronDown className="w-3.5 h-3.5 text-ct-text3" /> : <ChevronRight className="w-3.5 h-3.5 text-ct-text3" />}
+            <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Farm Alerts</span>
+            {clusterAlerts.length > 0 ? (
+              <>
+                {clusterAlerts.some(a => a.severity === 'danger') && <Pill variant="red">{clusterAlerts.filter(a => a.severity === 'danger').length} critical</Pill>}
+                {clusterAlerts.some(a => a.severity === 'warn') && <Pill variant="orange">{clusterAlerts.filter(a => a.severity === 'warn').length} watch</Pill>}
+              </>
+            ) : (
+              <Pill variant="green">All clear</Pill>
+            )}
+          </div>
+          <span className="font-mono-ibm text-[10px] text-ct-text3">{occupied.length} crocs · {totalCondFlags} flags</span>
+        </button>
+        {alertsOpen && (
+          <div className="px-3.5 pb-3 pt-1 border-t border-border">
+            {clusterAlerts.length > 0 ? (
+              clusterAlerts.map((a, i) => (
+                <NoteBox key={i} variant={a.severity}>
+                  <strong>{a.severity === 'danger' ? '⚠ ALERT:' : '⊙ WATCH:'}</strong> {a.text}
+                </NoteBox>
+              ))
+            ) : (
+              <NoteBox>
+                <strong>No condition clusters detected.</strong> {occupied.length} crocs tracked across GH1 & GH2. {totalCondFlags > 0 ? `${totalCondFlags} individual condition flags active.` : 'All clear.'}
+              </NoteBox>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 5-column KPIs */}
       <div className="grid grid-cols-5 gap-3.5 mb-5">
