@@ -170,7 +170,7 @@ export default function CrocDatasetTable() {
             {filtered.length} / {crocs?.length ?? 0} records
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={penFilter}
             onChange={e => setPenFilter(e.target.value)}
@@ -179,6 +179,29 @@ export default function CrocDatasetTable() {
             <option value="all">All Pens</option>
             {pens.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+          <div className="flex items-center gap-1.5 bg-surface-2 border border-border rounded-sm px-2 py-[3px]">
+            <span className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-wider">Inspected</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="bg-transparent text-ct-text font-mono-ibm text-[11px] outline-none"
+              title="From date"
+            />
+            <span className="text-ct-text3 text-[10px]">→</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="bg-transparent text-ct-text font-mono-ibm text-[11px] outline-none"
+              title="To date"
+            />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-ct-text3 hover:text-ct-text" title="Clear dates">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 bg-surface-2 border border-border rounded-sm px-2 py-[5px]">
             <Search className="w-3 h-3 text-ct-text3" />
             <input
