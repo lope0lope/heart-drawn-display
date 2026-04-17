@@ -234,8 +234,8 @@ export default function CrocDatasetTable() {
                 const isEditing = editingId === c.id;
                 const isExpanded = expandedId === c.id;
                 return (
-                  <>
-                  <tr key={c.id} className="border-b border-border last:border-b-0 hover:bg-surface-2">
+                  <FragmentWithKey key={c.id}>
+                  <tr className="border-b border-border last:border-b-0 hover:bg-surface-2">
                     <td className="p-[5px_4px]">
                       <button onClick={() => toggleExpand(c.id)} className="text-ct-text3 hover:text-ct-accent" title="Show inspection history">
                         {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
