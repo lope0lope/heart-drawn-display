@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Fragment as FragmentWithKey } from 'react';
 import { useAllCrocs, type CrocRecord } from '@/hooks/useCrocs';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -351,7 +351,7 @@ export default function CrocDatasetTable() {
                       </td>
                     </tr>
                   )}
-                  </>
+                  </FragmentWithKey>
                 );
               })}
             </tbody>
