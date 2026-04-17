@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid } from '@/lib/crocUtils';
+import { matchesConditionFilter, parseConditionCode, extractTypes, extractLocations } from '@/lib/conditionUtils';
 
 const BATCH_RANGES = [
   { label: 'All Tags', min: 0, max: 999999 },
@@ -57,7 +58,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
       if (searchTag && c.tag && !c.tag.toLowerCase().includes(searchTag.toLowerCase())) return false;
       if (searchTag && !c.tag) return false;
       if (showOnlyConditions && c.condition_codes.length === 0) return false;
-      if (gradeFilter !== 'all' && !c.condition_codes.includes(gradeFilter)) return false;
+      if (gradeFilter !== 'all' && !matchesConditionFilter(c.condition_codes, gradeFilter)) return false;
       if (batchFilter > 0 && c.tag) {
         const tagNum = parseInt(c.tag);
         if (isNaN(tagNum) || tagNum < batch.min || tagNum > batch.max) return false;
@@ -72,11 +73,17 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
     return new Set(filteredCrocs.map(c => c.id));
   }, [searchTag, filteredCrocs]);
 
-  const penConditions = useMemo(() => {
-    if (!crocs) return [];
-    const codes = new Set<string>();
-    crocs.forEach(c => c.condition_codes.forEach(code => codes.add(code)));
-    return [...codes].sort();
+  // Build filterable groups: full codes + parsed types + parsed locations.
+  const conditionFilterGroups = useMemo(() => {
+    if (!crocs) return { full: [] as string[], types: [] as string[], locations: [] as string[] };
+    const all: string[] = [];
+    crocs.forEach(c => c.condition_codes.forEach(code => all.push(code)));
+    const fullSet = new Set(all);
+    return {
+      full: [...fullSet].sort(),
+      types: extractTypes(all),
+      locations: extractLocations(all),
+    };
   }, [crocs]);
 
   // Row summary: condition count per line
@@ -253,10 +260,28 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
               <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Condition</label>
               <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)}>
                 <option value="all">All</option>
-                {penConditions.map(code => {
-                  const def = conditionDefs?.find(c => c.code === code);
-                  return <option key={code} value={code}>{code}{def ? ` — ${def.name}` : ''}</option>;
-                })}
+                {conditionFilterGroups.types.length > 0 && (
+                  <optgroup label="By Type (e.g. TH, R)">
+                    {conditionFilterGroups.types.map(t => (
+                      <option key={`t-${t}`} value={t}>{t} — any location</option>
+                    ))}
+                  </optgroup>
+                )}
+                {conditionFilterGroups.locations.length > 0 && (
+                  <optgroup label="By Location">
+                    {conditionFilterGroups.locations.map(l => (
+                      <option key={`l-${l}`} value={l}>{l} — any type</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Exact Code">
+                  {conditionFilterGroups.full.map(code => {
+                    const def = conditionDefs?.find(c => c.code === code);
+                    const parsed = parseConditionCode(code);
+                    const label = def ? `${code} — ${def.name}` : (parsed.location ? `${code} (${parsed.type} on ${parsed.location})` : code);
+                    return <option key={code} value={code}>{label}</option>;
+                  })}
+                </optgroup>
               </select>
             </div>
             <label className="flex items-center gap-1.5 cursor-pointer select-none pb-[1px]">
