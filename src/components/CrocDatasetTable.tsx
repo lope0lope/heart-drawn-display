@@ -309,7 +309,7 @@ export default function CrocDatasetTable() {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr key={`${c.id}-history`} className="bg-surface-2/40">
+                    <tr className="bg-surface-2/40">
                       <td colSpan={10} className="p-[6px_18px]">
                         <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-1.5">Inspection History · {history.length} record{history.length === 1 ? '' : 's'}</div>
                         {historyLoading ? (
