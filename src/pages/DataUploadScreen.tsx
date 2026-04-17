@@ -76,14 +76,30 @@ export default function DataUploadScreen() {
 
     try {
       const { inspectionDate, rows } = parsed;
+      const tags = rows.map(r => r.tag);
 
-      // Build payloads with merged condition codes
-      const crocPayloads = rows.map(r => {
+      // 1. Fetch existing crocs for these tags + their latest inspection date
+      const { data: existingCrocs } = await supabase
+        .from('crocs')
+        .select('id, tag, inspection_date')
+        .in('tag', tags);
+      const tagToExisting = new Map(
+        (existingCrocs ?? []).map(c => [c.tag, c])
+      );
+
+      // 2. For NEW tags → insert a crocs row using this inspection's data
+      //    For EXISTING tags → only UPDATE the live fields if this inspection
+      //    is newer than the croc's stored inspection_date (keeps "live" view
+      //    pinned to latest data, while older uploads just append history).
+      const newCrocPayloads: any[] = [];
+      const updatesNewer: { id: number; payload: any }[] = [];
+
+      for (const r of rows) {
         const condCodes: string[] = [...r.conditions];
         const cullCode = cullToConditionCode(r.cull);
         if (cullCode) condCodes.push(cullCode);
 
-        return {
+        const liveFields = {
           tag: r.tag,
           pen_id: r.pen,
           belly_cm: r.belly_cm,
@@ -92,36 +108,22 @@ export default function DataUploadScreen() {
           inspection_date: inspectionDate,
           cull_schedule: r.cull || null,
         };
-      });
 
-      // Delete existing crocs with these tags first, then insert fresh
-      const tags = rows.map(r => r.tag);
-      
-      // Get existing croc IDs for these tags (to clean inspections)
-      const { data: existingCrocs } = await supabase
-        .from('crocs')
-        .select('id, tag')
-        .in('tag', tags);
-
-      if (existingCrocs?.length) {
-        const existingIds = existingCrocs.map(c => c.id);
-        // Delete old inspections for this date
-        for (let i = 0; i < existingIds.length; i += 500) {
-          await supabase
-            .from('inspections')
-            .delete()
-            .in('croc_id', existingIds.slice(i, i + 500))
-            .eq('inspection_date', inspectionDate);
-        }
-        // Delete old croc records
-        for (let i = 0; i < existingIds.length; i += 500) {
-          await supabase.from('crocs').delete().in('id', existingIds.slice(i, i + 500));
+        const existing = tagToExisting.get(r.tag);
+        if (!existing) {
+          newCrocPayloads.push(liveFields);
+        } else {
+          const existingDate = existing.inspection_date ?? '';
+          if (inspectionDate >= existingDate) {
+            updatesNewer.push({ id: existing.id, payload: liveFields });
+          }
+          // else: older upload — just record an inspection, leave live row alone
         }
       }
 
-      // Insert fresh croc records
-      for (let i = 0; i < crocPayloads.length; i += 500) {
-        const batch = crocPayloads.slice(i, i + 500);
+      // 3. Insert new crocs
+      for (let i = 0; i < newCrocPayloads.length; i += 500) {
+        const batch = newCrocPayloads.slice(i, i + 500);
         const { error } = await supabase.from('crocs').insert(batch);
         if (error) {
           warnings++;
@@ -129,42 +131,60 @@ export default function DataUploadScreen() {
         }
       }
 
-      // Fetch newly inserted croc IDs
-      const { data: newCrocs } = await supabase
-        .from('crocs')
-        .select('id, tag')
-        .in('tag', tags);
-
-      if (newCrocs?.length) {
-        const tagToId = new Map(newCrocs.map(c => [c.tag, c.id]));
-
-        // Insert inspection records
-        const inspections = rows
-          .filter(r => tagToId.has(r.tag))
-          .map(r => {
-            const condCodes: string[] = [...r.conditions];
-            const cullCode = cullToConditionCode(r.cull);
-            if (cullCode) condCodes.push(cullCode);
-
-            return {
-              croc_id: tagToId.get(r.tag)!,
-              inspection_date: inspectionDate,
-              belly_cm: r.belly_cm,
-              condition_codes: condCodes,
-            };
-          });
-
-        for (let i = 0; i < inspections.length; i += 500) {
-          const batch = inspections.slice(i, i + 500);
-          const { error } = await supabase.from('inspections').insert(batch);
-          if (error) {
-            warnings++;
-            console.error('Inspection insert error:', error);
-          }
+      // 4. Update existing crocs whose live fields should advance
+      for (const u of updatesNewer) {
+        const { error } = await supabase.from('crocs').update(u.payload).eq('id', u.id);
+        if (error) {
+          warnings++;
+          console.error('Update error:', error);
         }
       }
 
-      // Log the upload
+      // 5. Re-fetch all crocs for these tags so we can map tag → id
+      const { data: allCrocs } = await supabase
+        .from('crocs')
+        .select('id, tag')
+        .in('tag', tags);
+      const tagToId = new Map((allCrocs ?? []).map(c => [c.tag, c.id]));
+
+      // 6. Replace any existing inspection for the same croc+date,
+      //    then insert the fresh ones (preserves all other historical
+      //    inspections so growth charts work).
+      const crocIds = [...new Set(rows.map(r => tagToId.get(r.tag)).filter(Boolean) as number[])];
+      if (crocIds.length) {
+        for (let i = 0; i < crocIds.length; i += 500) {
+          await supabase
+            .from('inspections')
+            .delete()
+            .in('croc_id', crocIds.slice(i, i + 500))
+            .eq('inspection_date', inspectionDate);
+        }
+      }
+
+      const inspections = rows
+        .filter(r => tagToId.has(r.tag))
+        .map(r => {
+          const condCodes: string[] = [...r.conditions];
+          const cullCode = cullToConditionCode(r.cull);
+          if (cullCode) condCodes.push(cullCode);
+          return {
+            croc_id: tagToId.get(r.tag)!,
+            inspection_date: inspectionDate,
+            belly_cm: r.belly_cm,
+            condition_codes: condCodes,
+          };
+        });
+
+      for (let i = 0; i < inspections.length; i += 500) {
+        const batch = inspections.slice(i, i + 500);
+        const { error } = await supabase.from('inspections').insert(batch);
+        if (error) {
+          warnings++;
+          console.error('Inspection insert error:', error);
+        }
+      }
+
+      // 7. Log
       await supabase.from('upload_logs').insert({
         filename: fileName,
         record_count: rows.length,
@@ -172,10 +192,16 @@ export default function DataUploadScreen() {
         warnings,
       });
 
-      // Invalidate all queries so metrics update
       queryClient.invalidateQueries();
 
-      toast.success(`Imported ${rows.length} records for ${inspectionDate}${warnings > 0 ? ` with ${warnings} warnings` : ''}`);
+      const newCount = newCrocPayloads.length;
+      const updatedCount = updatesNewer.length;
+      const historyOnly = rows.length - newCount - updatedCount;
+      toast.success(
+        `Imported ${rows.length} inspections for ${inspectionDate} ` +
+        `(${newCount} new crocs, ${updatedCount} live updates, ${historyOnly} history-only)` +
+        `${warnings > 0 ? ` · ${warnings} warnings` : ''}`
+      );
       refetchLogs();
     } catch (err: any) {
       toast.error(err.message || 'Import failed');
@@ -282,7 +308,7 @@ export default function DataUploadScreen() {
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
                 <strong className="text-ct-text2">Cull values:</strong> 1 = now · NXT = next cycle · 2 = 2 cycles · 3 = 3 cycles<br />
                 <strong className="text-ct-text2">Condition:</strong> Comma-separated codes (e.g. THChest,RTail for two defects)<br />
-                <strong className="text-ct-text2">Re-upload:</strong> Uploading updated data for the same tags will overwrite existing records
+                <strong className="text-ct-text2">Re-upload:</strong> Historical inspections are preserved — uploads from older dates only append history; uploads from newer/equal dates also refresh the croc's "live" fields. Edit/delete individual records below.
               </div>
             </div>
           </div>
