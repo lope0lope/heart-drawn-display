@@ -11,7 +11,11 @@ const BATCH_RANGES = [
   { label: '7401–8000', min: 7401, max: 8000 },
 ];
 
-export default function PenMapScreen() {
+interface PenMapScreenProps {
+  onOpenCroc?: (tag: string) => void;
+}
+
+export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [pen, setPen] = useState('GH1');
   const [mode, setMode] = useState('health');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
