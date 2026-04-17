@@ -224,16 +224,23 @@ export default function CrocDatasetTable() {
           <table className="border-collapse text-[11px] w-full">
             <thead className="sticky top-0 bg-surface-3 z-10">
               <tr>
-                {['Pen', 'Line', 'Slot', 'Tag', 'Size cm', 'Grade', 'Conditions', 'Cull', 'Actions'].map(h => (
-                  <th key={h} className="p-[6px_8px] border-b border-border text-ct-text3 font-mono-ibm text-[9px] tracking-wider uppercase text-left">{h}</th>
+                {['', 'Pen', 'Line', 'Slot', 'Tag', 'Size cm', 'Grade', 'Conditions', 'Cull', 'Actions'].map((h, i) => (
+                  <th key={i} className="p-[6px_8px] border-b border-border text-ct-text3 font-mono-ibm text-[9px] tracking-wider uppercase text-left">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.slice(0, 500).map(c => {
                 const isEditing = editingId === c.id;
+                const isExpanded = expandedId === c.id;
                 return (
+                  <>
                   <tr key={c.id} className="border-b border-border last:border-b-0 hover:bg-surface-2">
+                    <td className="p-[5px_4px]">
+                      <button onClick={() => toggleExpand(c.id)} className="text-ct-text3 hover:text-ct-accent" title="Show inspection history">
+                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      </button>
+                    </td>
                     <td className="p-[5px_8px] text-ct-text2">
                       {isEditing
                         ? <input value={draft.pen_id ?? ''} onChange={e => setDraft({ ...draft, pen_id: e.target.value })} className="bg-surface-3 border border-border text-ct-text px-1 py-px font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[60px]" />
