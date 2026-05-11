@@ -126,7 +126,8 @@ export default function FeedReportsScreen() {
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Feed Per Pen Line — {cycleSel}</span>
             <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">kg · avg per croc</span>
           </div>
-          <div className="overflow-x-auto"><div className="min-w-[480px]">
+          <div className="px-[18px] py-4 overflow-x-auto">
+          <div className="min-w-[460px]">
             <div className="grid grid-cols-[60px_80px_1fr_80px_80px] gap-1 font-mono-ibm text-[9px] text-ct-text3 pb-2 border-b border-border tracking-[1px] uppercase">
               <span>Line</span><span>Crocs</span><span>Feed</span><span>Avg/Croc</span><span>vs Prev</span>
             </div>
