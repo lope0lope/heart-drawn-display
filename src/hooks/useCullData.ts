@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBand, countSizeBands, getOccupied } from '@/lib/crocUtils';
+import { SIZE_BANDS, sizeBand, countSizeBands, getOccupied, cullEligibleCycle } from '@/lib/crocUtils';
 
 export interface CullRecord {
   id: number;
@@ -137,11 +137,18 @@ export function useCullProjections() {
     { label: '+3 Cycles (~6 mo)', cycles: 3 },
   ];
 
+  // Crocs on treatment hold (no schedule + active conditions) are excluded entirely.
+  const onHold = occupied.filter(c => cullEligibleCycle(c) === null).length;
+
   const projections: BandProjection[] = horizons.map(h => {
     const byBand = [0, 0, 0, 0, 0, 0];
 
     for (const c of occupied) {
       if (!c.belly_cm) continue;
+      const eligible = cullEligibleCycle(c);
+      // Skip held crocs entirely; skip those not yet cleared by this horizon.
+      if (eligible === null) continue;
+      if (eligible > h.cycles) continue;
       const projected = projectBelly(c.belly_cm, growthRates, h.cycles);
       const band = sizeBand(projected);
       if (band !== null) byBand[band]++;
@@ -154,7 +161,7 @@ export function useCullProjections() {
     };
   });
 
-  return { projections, rates: growthRates, occupied, totalStock: occupied.length };
+  return { projections, rates: growthRates, occupied, totalStock: occupied.length, onHold };
 }
 
 /** AI advisory based on cull projections */
@@ -166,7 +173,10 @@ export function useAiAdvisory() {
   if (!allCrocs || !growthRates) return null;
 
   const occupied = getOccupied(allCrocs);
-  const now = countSizeBands(occupied);
+  // Only crocs cleared for culling THIS cycle count toward "in stock" decisions.
+  const eligibleNow = occupied.filter(c => cullEligibleCycle(c) === 0);
+  const heldCount = occupied.filter(c => cullEligibleCycle(c) === null).length;
+  const now = countSizeBands(eligibleNow);
   const targets = SIZE_BANDS.map(b => b.target);
 
   const advisories: { icon: string; color: string; text: string }[] = [];
@@ -201,6 +211,14 @@ export function useAiAdvisory() {
       });
     }
   });
+
+  if (heldCount > 0) {
+    advisories.unshift({
+      icon: '⊙',
+      color: 'ct-warn',
+      text: `${heldCount} croc${heldCount === 1 ? '' : 's'} on treatment hold — excluded from cull totals until staff sets a clearance schedule (NXT / 2 / 3 / 4).`,
+    });
+  }
 
   if (advisories.length === 0) {
     advisories.push({
