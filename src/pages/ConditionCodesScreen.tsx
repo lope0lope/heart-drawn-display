@@ -31,7 +31,7 @@ export default function ConditionCodesScreen() {
 
   return (
     <div className="max-w-[1100px]">
-      <div className="grid grid-cols-2 gap-3.5 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-4">
         <div className="bg-[rgba(201,168,76,.07)] border-l-[3px] border-l-ct-accent px-3.5 py-2.5 rounded-r text-xs text-ct-text2 leading-relaxed">
           <strong>Live Defects</strong> — recorded on the living croc at each inspection. Tracked on the pen map and croc profile. Informs culling decisions and treatment holds.
         </div>
@@ -40,13 +40,13 @@ export default function ConditionCodesScreen() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-4">
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border">
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Body Locations — Column Headers</span>
           </div>
           <div className="px-[18px] py-4">
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
               {locs.map(l => (
                 <div key={l.code} className="bg-surface-2 border border-border rounded-sm p-2">
                   <div className="font-mono-ibm text-[13px] text-ct-accent font-medium">{l.code}</div>
@@ -74,7 +74,7 @@ export default function ConditionCodesScreen() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Live Defects</span>

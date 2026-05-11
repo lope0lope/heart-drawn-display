@@ -211,7 +211,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   });
 
   return (
-    <div className="grid grid-cols-[1fr_220px] gap-3.5">
+    <div className="grid grid-cols-1 xl:grid-cols-[1fr_220px] gap-3.5">
       <div>
         {/* Primary controls */}
         <div className="flex gap-2.5 items-center flex-wrap mb-2">

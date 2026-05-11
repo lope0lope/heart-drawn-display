@@ -344,7 +344,7 @@ export default function DataUploadScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className="flex flex-col gap-3.5">
         {/* Upload Zone */}
         <div className="bg-surface border border-border rounded overflow-hidden">

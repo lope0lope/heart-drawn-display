@@ -103,7 +103,7 @@ export default function FeedReportsScreen() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-3.5 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 mb-4">
         {[
           { label: 'Total Feed (Cycle)', value: `${totalFeed.toLocaleString()} kg`, sub: 'All lines combined' },
           { label: 'Avg per Crocodile', value: `${avgPerCroc.toFixed(0)} g`, sub: 'Per 2-month cycle', cls: 'info' },
@@ -119,14 +119,15 @@ export default function FeedReportsScreen() {
         ))}
       </div>
 
-      <div className="grid grid-cols-[1.4fr_1fr] gap-3.5 mb-3.5">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3.5 mb-3.5">
         {/* Feed Per Line */}
         <div className="bg-surface border border-border rounded overflow-hidden">
           <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
             <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Feed Per Pen Line — {cycleSel}</span>
             <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">kg · avg per croc</span>
           </div>
-          <div className="px-[18px] py-4">
+          <div className="px-[18px] py-4 overflow-x-auto">
+          <div className="min-w-[460px]">
             <div className="grid grid-cols-[60px_80px_1fr_80px_80px] gap-1 font-mono-ibm text-[9px] text-ct-text3 pb-2 border-b border-border tracking-[1px] uppercase">
               <span>Line</span><span>Crocs</span><span>Feed</span><span>Avg/Croc</span><span>vs Prev</span>
             </div>
@@ -154,6 +155,7 @@ export default function FeedReportsScreen() {
                 );
               })
             )}
+          </div>
           </div>
         </div>
 
@@ -186,7 +188,8 @@ export default function FeedReportsScreen() {
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Cull Impact Estimation — Feed Intake at Time of Cull</span>
           <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(212,137,42,.15)] text-ct-warn">From cull records</span>
         </div>
-        <div className="px-[18px] py-4">
+        <div className="px-[18px] py-4 overflow-x-auto">
+        <div className="min-w-[560px]">
           <div className="grid grid-cols-5 gap-1 font-mono-ibm text-[9px] text-ct-text3 pb-2 border-b border-border tracking-[1px] uppercase">
             <span>Size Band</span><span className="text-center">Culled</span><span className="text-center">Avg Cycles</span><span className="text-center">Avg Feed/Cycle</span><span className="text-center">Est. Lifetime Feed</span>
           </div>
@@ -202,6 +205,7 @@ export default function FeedReportsScreen() {
           <div className="mt-2.5 font-mono-ibm text-[9px] text-ct-text3 leading-[1.8]">
             ※ Lifetime feed estimate = Avg Cycles × Avg Feed per Cycle · Cull counts sourced from cull_records table.
           </div>
+        </div>
         </div>
       </div>
     </div>

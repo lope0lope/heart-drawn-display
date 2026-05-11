@@ -1,8 +1,12 @@
-import { type ScreenName, SCREEN_TITLES } from '@/data/mockData';
+import { type ScreenName } from '@/data/mockData';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 interface SidebarProps {
   activeScreen: ScreenName;
   onNavigate: (screen: ScreenName) => void;
+  /** Mobile drawer state */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: string; badge?: string }> = [
@@ -14,16 +18,15 @@ const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: s
   { id: 'croc', icon: '◇', label: 'Croc Profiles' },
 ];
 
-export default function AppSidebar({ activeScreen, onNavigate }: SidebarProps) {
+function NavBody({ activeScreen, onNavigate }: { activeScreen: ScreenName; onNavigate: (s: ScreenName) => void }) {
   let currentSection = '';
-
   return (
-    <nav className="w-[220px] min-w-[220px] bg-surface border-r border-border flex flex-col z-10">
+    <>
       <div className="px-5 pt-[22px] pb-[18px] border-b border-border">
         <div className="font-display text-[22px] font-bold text-ct-accent tracking-[2px]">◈ CROCTRACK</div>
         <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[3px] uppercase mt-0.5">Farm Intelligence System</div>
       </div>
-      <div className="flex-1 py-3">
+      <div className="flex-1 py-3 overflow-y-auto">
         {navItems.map((item) => {
           const showSection = item.section && item.section !== currentSection;
           if (item.section) currentSection = item.section;
@@ -34,8 +37,8 @@ export default function AppSidebar({ activeScreen, onNavigate }: SidebarProps) {
                   {item.section}
                 </div>
               )}
-              <div
-                className={`flex items-center gap-2.5 px-5 py-2.5 cursor-pointer text-[13px] font-medium transition-all border-l-[3px] ${
+              <button
+                className={`w-full flex items-center gap-2.5 px-5 py-3 cursor-pointer text-[13px] font-medium transition-all border-l-[3px] active:scale-[.98] ${
                   activeScreen === item.id
                     ? 'bg-surface-2 text-ct-accent border-l-ct-accent'
                     : 'text-ct-text2 border-l-transparent hover:bg-surface-2 hover:text-ct-text'
@@ -49,7 +52,7 @@ export default function AppSidebar({ activeScreen, onNavigate }: SidebarProps) {
                     {item.badge}
                   </span>
                 )}
-              </div>
+              </button>
             </div>
           );
         })}
@@ -59,6 +62,29 @@ export default function AppSidebar({ activeScreen, onNavigate }: SidebarProps) {
         Cycle <span className="text-ct-accent">Q2-2026</span><br />
         Next inspection: <span className="text-ct-accent">14 Apr 2026</span>
       </div>
-    </nav>
+    </>
+  );
+}
+
+export default function AppSidebar({ activeScreen, onNavigate, mobileOpen, onMobileOpenChange }: SidebarProps) {
+  const handleNav = (s: ScreenName) => {
+    onNavigate(s);
+    onMobileOpenChange?.(false);
+  };
+
+  return (
+    <>
+      {/* Desktop / tablet sidebar */}
+      <nav className="hidden md:flex w-[220px] min-w-[220px] bg-surface border-r border-border flex-col z-10">
+        <NavBody activeScreen={activeScreen} onNavigate={onNavigate} />
+      </nav>
+
+      {/* Mobile off-canvas drawer */}
+      <Sheet open={!!mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent side="left" className="p-0 w-[260px] bg-surface border-border flex flex-col">
+          <NavBody activeScreen={activeScreen} onNavigate={handleNav} />
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

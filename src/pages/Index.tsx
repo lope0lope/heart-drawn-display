@@ -25,6 +25,7 @@ const SCREENS: Record<ScreenName, React.ComponentType<any>> = {
 export default function Index() {
   const [screen, setScreen] = useState<ScreenName>('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const Screen = SCREENS[screen];
 
   const handleSearch = useCallback((query: string) => {
@@ -32,12 +33,27 @@ export default function Index() {
     setScreen('croc');
   }, []);
 
+  const handleNavigate = useCallback((s: ScreenName) => {
+    setScreen(s);
+    setMobileNavOpen(false);
+  }, []);
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      <AppSidebar activeScreen={screen} onNavigate={setScreen} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar title={SCREEN_TITLES[screen]} onNavigate={setScreen} onSearch={handleSearch} />
-        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+    <div className="flex h-[100dvh] overflow-hidden">
+      <AppSidebar
+        activeScreen={screen}
+        onNavigate={handleNavigate}
+        mobileOpen={mobileNavOpen}
+        onMobileOpenChange={setMobileNavOpen}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <Topbar
+          title={SCREEN_TITLES[screen]}
+          onNavigate={handleNavigate}
+          onSearch={handleSearch}
+          onMenuClick={() => setMobileNavOpen(true)}
+        />
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 min-h-0">
           {screen === 'croc' ? (
             <CrocProfileScreen initialSearch={searchQuery} />
           ) : screen === 'penmap' ? (

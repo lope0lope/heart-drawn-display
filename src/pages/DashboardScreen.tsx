@@ -146,8 +146,8 @@ export default function DashboardScreen() {
         )}
       </div>
 
-      {/* 5-column KPIs */}
-      <div className="grid grid-cols-5 gap-3.5 mb-5">
+      {/* Responsive KPIs: 2 cols on phone, 3 on small tablet, 5 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5 mb-5">
         <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count} · GH2: ${gh2Count}`} />
         <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `Click to view list` : 'None flagged'} variant="warn" onClick={() => setTreatmentOpen(true)} />
         <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} types active`} variant="danger" />
@@ -161,7 +161,7 @@ export default function DashboardScreen() {
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Stock Available to Cull — All Size Bands</span>
           <Pill>Computed from live data</Pill>
         </div>
-        <div className="grid grid-cols-4 divide-x divide-border">
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border">
           {(cullProjections?.projections ?? []).map((p, i) => {
             const totalStock = p.distribution.reduce((a, b) => a + b, 0);
             return (
@@ -181,7 +181,7 @@ export default function DashboardScreen() {
       </div>
 
       {/* Size & Conditions */}
-      <div className="grid grid-cols-[1.6fr_1fr] gap-3.5 mb-3.5">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-3.5 mb-3.5">
         <Panel title="Size Category Snapshot — Today" pill={<Pill>Live from Supabase</Pill>}>
           {SIZE_BANDS.map((b, i) => (
             <div key={i} className="flex items-center gap-2.5 mb-2">
@@ -212,7 +212,7 @@ export default function DashboardScreen() {
       </div>
 
       {/* AI Advisory & Activity */}
-      <div className="grid grid-cols-[2fr_1fr] gap-3.5">
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
         <Panel title="AI Advisory — This Month" pill={<Pill>AI · Live</Pill>}>
           <div className="text-xs text-ct-text2 leading-[1.8]">
             {aiAdvisory ? (
