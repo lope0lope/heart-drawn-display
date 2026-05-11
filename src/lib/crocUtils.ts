@@ -93,3 +93,33 @@ export function countConditions(crocs: CrocRecord[]): Record<string, number> {
 export function getOccupied(crocs: CrocRecord[]): CrocRecord[] {
   return crocs.filter(c => c.belly_cm !== null);
 }
+
+/**
+ * Earliest cycle (0 = current) at which the croc may be culled, based on the
+ * staff-recorded `cull_schedule` from inspection uploads, and active health
+ * conditions. Returns `null` if the croc must be excluded entirely (on
+ * treatment hold without an explicit clearance schedule).
+ *
+ *   cull_schedule '1'   -> 0 (eligible now)
+ *   cull_schedule 'NXT' -> 1
+ *   cull_schedule '2'   -> 2
+ *   cull_schedule '3'   -> 3
+ *   cull_schedule '4'   -> 4
+ *   empty + no active (non-CULL) conditions -> 0
+ *   empty + has active conditions -> null (held until staff sets a schedule)
+ */
+export function cullEligibleCycle(croc: CrocRecord): number | null {
+  const raw = (croc.cull_schedule ?? '').trim().toUpperCase();
+  if (raw === '1') return 0;
+  if (raw === 'NXT' || raw === 'NEXT') return 1;
+  if (raw === '2') return 2;
+  if (raw === '3') return 3;
+  if (raw === '4') return 4;
+
+  // No explicit schedule — check for active (non-CULL) condition flags
+  const activeConditions = (croc.condition_codes ?? []).filter(
+    c => !c.toUpperCase().startsWith('CULL-')
+  );
+  if (activeConditions.length > 0) return null; // on treatment hold
+  return 0;
+}

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAllCrocs, useConditionCodes } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied, sizeBand } from '@/lib/crocUtils';
+import { SIZE_BANDS, sizeBandColor, countSizeBands, countConditions, getOccupied, sizeBand, cullEligibleCycle } from '@/lib/crocUtils';
 import { useCullProjections, useAiAdvisory } from '@/hooks/useCullData';
 import { useUploadLogs } from '@/hooks/useFeedData';
 import InTreatmentDialog from '@/components/InTreatmentDialog';
@@ -97,7 +97,8 @@ export default function DashboardScreen() {
   const maxC = Math.max(...Object.values(cc), 1);
 
   const inTreatment = occupied.filter(c => c.condition_codes.length > 0).length;
-  const cullReady = occupied.filter(c => c.belly_cm !== null && c.belly_cm >= 35).length;
+  const onHold = occupied.filter(c => cullEligibleCycle(c) === null).length;
+  const cullReady = occupied.filter(c => c.belly_cm !== null && c.belly_cm >= 35 && cullEligibleCycle(c) === 0).length;
 
   // Next inspection: find latest inspection_date and compute days since
   const dates = occupied.filter(c => c.inspection_date).map(c => new Date(c.inspection_date).getTime());
@@ -150,7 +151,7 @@ export default function DashboardScreen() {
         <KPI label="Active — Skin Track" value={occupied.length.toLocaleString()} delta={`GH1: ${gh1Count} · GH2: ${gh2Count}`} />
         <KPI label="In Treatment" value={inTreatment.toString()} sub="Injury / Disease hold" delta={inTreatment > 0 ? `Click to view list` : 'None flagged'} variant="warn" onClick={() => setTreatmentOpen(true)} />
         <KPI label="Condition Flags" value={totalCondFlags.toString()} sub={`${uniqueCondTypes} types active`} variant="danger" />
-        <KPI label="Cull Ready" value={cullReady.toString()} sub="Belly ≥ 35 cm" delta={`${((cullReady / occupied.length) * 100).toFixed(0)}% of stock`} variant="good" />
+        <KPI label="Cull Ready" value={cullReady.toString()} sub="≥35 cm & cleared" delta={onHold > 0 ? `${onHold} on treatment hold` : `${((cullReady / Math.max(occupied.length,1)) * 100).toFixed(0)}% of stock`} variant="good" />
         <KPI label="Next Inspection" value={daysUntilNext !== null ? `${daysUntilNext}d` : '—'} sub={daysUntilNext !== null ? (daysUntilNext <= 2 ? 'Imminent' : 'Scheduled') : 'No data'} delta={latestInspection ? `Last: ${latestInspection.toLocaleDateString()}` : ''} variant={daysUntilNext !== null && daysUntilNext <= 2 ? 'warn' : 'info'} />
       </div>
 
