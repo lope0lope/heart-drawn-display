@@ -205,6 +205,7 @@ export default function AnalyticsScreen() {
             {filteredCrocs.length > 100 && (
               <div className="text-xs text-ct-text3 text-center py-2">Showing first 100 of {filteredCrocs.length}</div>
             )}
+            </div>
           </div>
         </Panel>
       )}
