@@ -6,6 +6,9 @@ import { toast } from 'sonner';
 import { parseInspectionFile, cullToConditionCode, type ParsedInspectionRow, type ParsedInspectionFile } from '@/lib/inspectionParser';
 import { useQueryClient } from '@tanstack/react-query';
 import CrocDatasetTable from '@/components/CrocDatasetTable';
+import { sizeBand } from '@/lib/crocUtils';
+
+export const CULLED_MARKER = 'CULLED';
 
 interface ValidationResult {
   ok: boolean;
@@ -81,7 +84,7 @@ export default function DataUploadScreen() {
       // 1. Fetch existing crocs for these tags + their latest inspection date
       const { data: existingCrocs } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date')
+        .select('id, tag, inspection_date, cull_schedule')
         .in('tag', tags);
       const tagToExisting = new Map(
         (existingCrocs ?? []).map(c => [c.tag, c])
@@ -184,7 +187,71 @@ export default function DataUploadScreen() {
         }
       }
 
-      // 7. Log
+      // 7. Disappearance-based cull detection.
+      //    A croc is considered culled when ALL of:
+      //      - Its previous pen_id was re-inspected in this upload
+      //        (otherwise the pen just wasn't visited yet, not a cull).
+      //      - Its tag does NOT appear ANYWHERE in this upload
+      //        (so a croc moved to a different pen is correctly excluded).
+      //      - It is not already marked as culled.
+      //    Re-appearance: if a previously-culled tag appears in this upload,
+      //    we already updated its live fields above; here we also clear any
+      //    matching cull_records row so it's not double-counted.
+      let autoCulled = 0;
+      let autoRevived = 0;
+      try {
+        const uploadPenIds = [...new Set(rows.map(r => r.pen).filter(Boolean))];
+        const uploadTagSet = new Set(tags);
+
+        if (uploadPenIds.length > 0) {
+          const { data: candidatesInPens } = await supabase
+            .from('crocs')
+            .select('id, tag, pen_id, belly_cm, cull_schedule')
+            .in('pen_id', uploadPenIds);
+
+          const disappeared = (candidatesInPens ?? []).filter(c =>
+            c.cull_schedule !== CULLED_MARKER && !uploadTagSet.has(c.tag ?? '')
+          );
+
+          if (disappeared.length > 0) {
+            const cullRows = disappeared.map(c => ({
+              croc_id: c.id,
+              cull_date: inspectionDate,
+              size_band_index: c.belly_cm != null ? (sizeBand(c.belly_cm) ?? -1) : -1,
+              reason: 'auto: disappeared from inspection',
+            }));
+            for (let i = 0; i < cullRows.length; i += 500) {
+              await supabase.from('cull_records').insert(cullRows.slice(i, i + 500));
+            }
+            for (let i = 0; i < disappeared.length; i += 500) {
+              const ids = disappeared.slice(i, i + 500).map(c => c.id);
+              await supabase
+                .from('crocs')
+                .update({ cull_schedule: CULLED_MARKER })
+                .in('id', ids);
+            }
+            autoCulled = disappeared.length;
+          }
+        }
+
+        // Revive any previously-culled tags that re-appear in this upload.
+        const reappeared = (existingCrocs ?? []).filter(
+          c => uploadTagSet.has(c.tag ?? '') && (c as any).cull_schedule === CULLED_MARKER
+        );
+        if (reappeared.length > 0) {
+          await supabase
+            .from('cull_records')
+            .delete()
+            .in('croc_id', reappeared.map(c => c.id))
+            .eq('reason', 'auto: disappeared from inspection');
+          autoRevived = reappeared.length;
+        }
+      } catch (e) {
+        console.warn('Cull detection step failed:', e);
+        warnings++;
+      }
+
+      // 8. Log
       await supabase.from('upload_logs').insert({
         filename: fileName,
         record_count: rows.length,
@@ -199,7 +266,9 @@ export default function DataUploadScreen() {
       const historyOnly = rows.length - newCount - updatedCount;
       toast.success(
         `Imported ${rows.length} inspections for ${inspectionDate} ` +
-        `(${newCount} new crocs, ${updatedCount} live updates, ${historyOnly} history-only)` +
+        `(${newCount} new, ${updatedCount} updated, ${historyOnly} history-only` +
+        `${autoCulled > 0 ? `, ${autoCulled} auto-culled` : ''}` +
+        `${autoRevived > 0 ? `, ${autoRevived} revived` : ''})` +
         `${warnings > 0 ? ` · ${warnings} warnings` : ''}`
       );
       refetchLogs();
