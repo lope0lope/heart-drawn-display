@@ -55,14 +55,17 @@ export default function ForecastScreen() {
 
       {/* ── Main Projection Table: Stock per Band at Each Horizon ── */}
       <div className="bg-card border border-border rounded overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-2">
           <span className="font-mono text-[10px] text-muted-foreground tracking-[2px] uppercase">
             Projected Stock by Size Band
           </span>
-          <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono bg-[hsla(var(--ct-accent),0.15)] text-[hsl(var(--ct-accent))]">
+          <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono bg-[hsla(var(--ct-accent),0.15)] text-[hsl(var(--ct-accent))] whitespace-nowrap">
             Live projection
           </span>
         </div>
+
+        <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
 
         {/* Column headers */}
         <div className="grid grid-cols-[160px_repeat(4,1fr)_100px] border-b border-border bg-secondary/50">
@@ -147,8 +150,10 @@ export default function ForecastScreen() {
           </div>
         </div>
       </div>
+      </div>
+      </div>
 
-      <div className="grid grid-cols-[1fr_320px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Left: Growth Rates + Band Transitions */}
         <div className="flex flex-col gap-4">
           {/* Growth Rates */}
