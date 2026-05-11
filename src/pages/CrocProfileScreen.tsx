@@ -96,7 +96,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-[270px_1fr] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[270px_1fr] gap-4">
           {/* Left: Profile card */}
           <div className="flex flex-col gap-3">
             <div className="bg-surface border border-border rounded overflow-hidden">
