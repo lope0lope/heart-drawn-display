@@ -84,7 +84,7 @@ export default function DataUploadScreen() {
       // 1. Fetch existing crocs for these tags + their latest inspection date
       const { data: existingCrocs } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date')
+        .select('id, tag, inspection_date, cull_schedule')
         .in('tag', tags);
       const tagToExisting = new Map(
         (existingCrocs ?? []).map(c => [c.tag, c])
