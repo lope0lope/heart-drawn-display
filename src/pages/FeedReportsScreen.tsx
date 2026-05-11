@@ -206,6 +206,7 @@ export default function FeedReportsScreen() {
             ※ Lifetime feed estimate = Avg Cycles × Avg Feed per Cycle · Cull counts sourced from cull_records table.
           </div>
         </div>
+        </div>
       </div>
     </div>
   );
