@@ -6,6 +6,9 @@ import { toast } from 'sonner';
 import { parseInspectionFile, cullToConditionCode, type ParsedInspectionRow, type ParsedInspectionFile } from '@/lib/inspectionParser';
 import { useQueryClient } from '@tanstack/react-query';
 import CrocDatasetTable from '@/components/CrocDatasetTable';
+import { sizeBand } from '@/lib/crocUtils';
+
+export const CULLED_MARKER = 'CULLED';
 
 interface ValidationResult {
   ok: boolean;
