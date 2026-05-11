@@ -156,6 +156,7 @@ export default function FeedReportsScreen() {
               })
             )}
           </div>
+          </div>
         </div>
 
         {/* Monthly Totals */}
@@ -187,7 +188,8 @@ export default function FeedReportsScreen() {
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Cull Impact Estimation — Feed Intake at Time of Cull</span>
           <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(212,137,42,.15)] text-ct-warn">From cull records</span>
         </div>
-        <div className="px-[18px] py-4">
+        <div className="px-[18px] py-4 overflow-x-auto">
+        <div className="min-w-[560px]">
           <div className="grid grid-cols-5 gap-1 font-mono-ibm text-[9px] text-ct-text3 pb-2 border-b border-border tracking-[1px] uppercase">
             <span>Size Band</span><span className="text-center">Culled</span><span className="text-center">Avg Cycles</span><span className="text-center">Avg Feed/Cycle</span><span className="text-center">Est. Lifetime Feed</span>
           </div>
