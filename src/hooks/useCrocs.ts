@@ -26,7 +26,7 @@ export function useCrocs(penId?: string) {
   return useQuery({
     queryKey: ['crocs', penId],
     queryFn: async () => {
-      let query = supabase.from('crocs').select('*');
+      let query = supabase.from('crocs').select('*').or('cull_schedule.is.null,cull_schedule.neq.CULLED');
       if (penId) query = query.eq('pen_id', penId);
       const { data, error } = await query.order('line').order('pen_slot');
       if (error) throw error;
@@ -42,6 +42,7 @@ export function useAllCrocs() {
       const { data, error } = await supabase
         .from('crocs')
         .select('*')
+        .or('cull_schedule.is.null,cull_schedule.neq.CULLED')
         .order('pen_id')
         .order('line')
         .order('pen_slot');
