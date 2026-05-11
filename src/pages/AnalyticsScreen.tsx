@@ -112,9 +112,9 @@ export default function AnalyticsScreen() {
   const handleClear = () => { setQueryApplied(false); setFilterValue(''); };
 
   return (
-    <div className="grid grid-cols-2 gap-3.5">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
       {/* Query Builder */}
-      <div className="col-span-2 bg-surface border border-border rounded overflow-hidden">
+      <div className="md:col-span-2 bg-surface border border-border rounded overflow-hidden">
         <div className="px-[18px] py-3 border-b border-border">
           <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Dynamic Query Builder</span>
         </div>
@@ -188,7 +188,8 @@ export default function AnalyticsScreen() {
       {/* Table */}
       {viewMode === 'table' && (
         <Panel title={`Filtered Results — Table (${filteredCrocs.length} crocs)`}>
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="max-h-[400px] overflow-y-auto overflow-x-auto">
+            <div className="min-w-[480px]">
             <div className="grid grid-cols-[60px_60px_50px_80px_1fr] gap-1 font-mono-ibm text-[9px] text-ct-text3 pb-2 border-b border-border tracking-[1px] uppercase">
               <span>Pen</span><span>Line</span><span>Slot</span><span>Belly</span><span>Conditions</span>
             </div>
