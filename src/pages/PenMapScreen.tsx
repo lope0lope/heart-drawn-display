@@ -31,7 +31,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState(0); // index into BATCH_RANGES
 
-  const { data: crocs, isLoading } = useCrocs(pen);
+  const { data: crocs, isLoading } = useCrocs(pen === 'ALL' ? undefined : pen);
   const { data: conditionDefs } = useConditionCodes();
 
   useEffect(() => {
@@ -218,6 +218,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
           <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={pen} onChange={e => setPen(e.target.value)}>
             <option value="GH1">GH1</option>
             <option value="GH2">GH2</option>
+            <option value="ALL">Both (GH1+GH2)</option>
           </select>
           <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={mode} onChange={e => setMode(e.target.value)}>
             <option value="health">Heatmap: Health Status</option>
@@ -392,6 +393,10 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             </div>
           </div>
         )}
+
+
+        {/* Conditions Breakdown */}
+        <ConditionBreakdown crocs={crocs} pen={pen} conditionDefs={conditionDefs} />
       </div>
 
       {/* Row Summary Sidebar */}
@@ -420,6 +425,80 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             Right = avg belly size (cm)
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface ConditionBreakdownProps {
+  crocs: CrocRecord[] | undefined;
+  pen: string;
+  conditionDefs: Array<{ code: string; name: string; color_var: string }> | undefined;
+}
+
+function ConditionBreakdown({ crocs, pen, conditionDefs }: ConditionBreakdownProps) {
+  const breakdown = useMemo(() => {
+    if (!crocs) return { groups: [] as Array<{ type: string; total: number; locations: Array<{ location: string; count: number }> }>, totalFlagged: 0 };
+    const totalFlagged = crocs.filter(c => c.condition_codes.length > 0).length;
+    // Group by type prefix
+    const byType: Record<string, Record<string, number>> = {};
+    for (const c of crocs) {
+      for (const code of c.condition_codes) {
+        const p = parseConditionCode(code);
+        const loc = p.location || '—';
+        byType[p.type] ??= {};
+        byType[p.type][loc] = (byType[p.type][loc] || 0) + 1;
+      }
+    }
+    const groups = Object.entries(byType).map(([type, locs]) => {
+      const total = Object.values(locs).reduce((a, b) => a + b, 0);
+      const locations = Object.entries(locs)
+        .map(([location, count]) => ({ location, count }))
+        .sort((a, b) => b.count - a.count);
+      return { type, total, locations };
+    }).sort((a, b) => b.total - a.total);
+    return { groups, totalFlagged };
+  }, [crocs]);
+
+  const penLabel = pen === 'ALL' ? 'GH1 + GH2' : pen;
+
+  return (
+    <div className="mt-3.5 bg-surface border border-border rounded overflow-hidden">
+      <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
+        <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Conditions in {penLabel}</span>
+        <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(212,137,42,.15)] text-ct-warn">
+          {breakdown.totalFlagged} flagged croc{breakdown.totalFlagged === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div className="px-[18px] py-4">
+        {breakdown.groups.length === 0 ? (
+          <div className="text-xs text-ct-text3 text-center py-3">No conditions recorded in this view.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            {breakdown.groups.map(g => {
+              const def = conditionDefs?.find(c => c.code === g.type);
+              const color = def ? `hsl(var(${def.color_var}))` : 'hsl(var(--ct-accent))';
+              const name = def?.name ?? g.type;
+              return (
+                <div key={g.type} className="border-b border-[rgba(255,255,255,.04)] pb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                    <span className="font-mono-ibm text-[11px]" style={{ color }}>{g.type}</span>
+                    <span className="text-xs text-ct-text2 flex-1 truncate">{name}</span>
+                    <span className="font-mono-ibm text-[12px] text-ct-text">{g.total}</span>
+                  </div>
+                  <div className="pl-4 flex flex-wrap gap-x-3 gap-y-0.5">
+                    {g.locations.map(l => (
+                      <span key={l.location} className="font-mono-ibm text-[10px] text-ct-text3">
+                        {l.location}: <span className="text-ct-text2">{l.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
