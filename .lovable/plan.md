@@ -1,88 +1,76 @@
+## Goal
+Reduce the visual/conceptual load of CrocTrack so the client sees only what matters: how many crocs are marked for cull, by horizon. Pen Map gains a condition-breakdown panel for the current pen view.
 
+## 1. Hide Forecasting & Feed Reports from navigation
+- Edit `src/components/AppSidebar.tsx`: remove the `forecast` and `feed` entries from `navItems`. The `Records` section will now start with `upload`.
+- Leave the screen files, routing in `Index.tsx`, and all hooks intact so the pages can be re-enabled by restoring two lines in the future.
+- No file deletion.
 
-## CrocTrack — Prototype Alignment & Practical Output Improvements
+## 2. New cull-marker semantics
+Update `src/lib/crocUtils.ts` → `cullEligibleCycle()` to use the client's literal mapping:
 
-After comparing the uploaded prototype (`croctrack_v4_1.html`) against the current live app, I've identified several gaps where the prototype delivers more **practical, actionable outputs** that the current app is missing or underdelivering on.
+| `cull_schedule` (uppercased, trimmed) | Cycles until cull |
+|---|---|
+| `NX` / `NXT` / `NEXT` | 0 (next cycle = "ready next cycle") |
+| `1` | 1 |
+| `2` | 2 |
+| `3` | 3 |
+| anything else / empty | not marked (excluded from the four KPIs) |
 
-### Key Problems
-1. **Dashboard is data-heavy but not actionable** — the note box, activity feed, and AI advisory show generic static text rather than specific, contextual alerts (e.g., "GH1 Row F has elevated DS cluster" or "3 MN flags on GH2 Row J — feeder check recommended").
-2. **In-Treatment dialog** works but doesn't group by line or let you filter — you want to walk the farm with a printout per line/pen.
-3. **Pen Map** is missing the **batch filter** and **print/export** functionality from the prototype.
-4. **Croc Profile** is missing **feed consumption history**, **size history with progress bar** to cull threshold, and **projected cull timeline**.
-5. **Analytics** is missing the **Treatment Hold — Healing Trajectories** panel and the **Batch Comparison** panel from the prototype.
-6. **Condition Codes** page is missing **Body Locations grid**, **Severity Rating panel** (NXT, 1-4 scale), and the **Live vs Hide defect distinction** from the prototype.
-7. **Dashboard KPIs** should be 5-column in prototype (currently 3) — missing "Cull Ready" and "Next Inspection" KPIs.
+Active conditions no longer block the marker — staff judgement (the marker itself) is the single source of truth, matching the client's intent.
 
-### Plan
+A new helper `cullMarkerHorizon(croc): 0|1|2|3|null` will be added to keep the new dashboard logic clean and leave the legacy `cullEligibleCycle` available for any other callers.
 
-#### 1. Dashboard — Make alerts specific and actionable
-- Replace the generic NoteBox text with **computed alerts**: scan croc data for clusters (e.g., 3+ MN flags on the same line, DS clusters) and surface them as named warnings
-- Add two more KPI cards: **Cull Ready** (count of crocs above 35cm threshold) and **Next Inspection** countdown
-- Make the Activity feed show real recent actions (upload logs, condition changes) instead of static text
-- AI Advisory should call out specific lines/rows with problems
+## 3. Dashboard rebuild (`src/pages/DashboardScreen.tsx`)
+Replace the current 5 KPI cards with these five, all clickable:
 
-#### 2. In-Treatment Dialog — Practical inspection list
-- Add **group-by-line** toggle so you can print a list organized by walk route (Line A, Line B, etc.)
-- Add **condition filter** dropdown to show only specific conditions (e.g., "show me all MN crocs")
-- Add **severity column** showing grade/severity alongside condition codes
-- Improve the print layout to be a proper **farm walk checklist** with checkboxes
+1. **Total Crocodile Count** — `occupied.length` (no drill-down dialog; click is a no-op or toggles the existing size snapshot panel).
+2. **Ready for Cull — Next Cycle (NX)** — count where `cullMarkerHorizon === 0`.
+3. **Ready in 1 More Cycle** — count where `cullMarkerHorizon === 1`.
+4. **Ready in 2 More Cycles** — `=== 2`.
+5. **Ready in 3 More Cycles** — `=== 3`.
 
-#### 3. Pen Map — Add batch filter and print
-- Add **Batch filter** dropdown (tag ranges like 5000–5600) that dims non-batch crocs, matching the prototype
-- Wire the **Print / Export** button to generate a printable pen map (color grid + legend), matching the prototype's `printPenMap()` function
-- Add **Row Summary** sidebar showing condition count per line as bar chart
+Click behaviour: clicking a cull KPI opens a dialog (`CullHorizonDialog`, new component in `src/components/`) showing the **size category snapshot** for just that group — i.e. the same `SIZE_BANDS` bar list rendered in the existing "Size Category Snapshot" panel, but counted from the filtered subset. Clicking "Total" can either show the full snapshot or be non-interactive; default to non-interactive to keep things simple.
 
-#### 4. Croc Profile — Add practical tracking panels
-- Add **Feed Consumption History** panel showing feed intake per cycle (from feed_records joined by pen/line)
-- Add **Size History** panel with a progress bar showing % toward cull threshold (54 cm)
-- Add **Projected Timeline** with ghost entries showing estimated cull date based on growth rate
-- Add **CITIES Tag** placeholder field (assigned at cull)
+Sections to remove from the dashboard to match the simplification request:
+- `Stock Available to Cull — All Size Bands` (forecast-driven, no longer needed).
+- `AI Advisory — This Month` panel.
+- `Recent Activity` panel.
+- `Active Conditions` panel.
+- `Farm Alerts` collapsible (cluster detection).
 
-#### 5. Analytics — Add missing panels from prototype
-- Add **Treatment Hold — Healing Trajectories** panel showing avg cycles to heal per condition type
-- Add **Batch Comparison** panel showing avg size by cycle for different tag ranges
-- Make heatmap show both GH1 and GH2
+Sections to keep:
+- The `Size Category Snapshot — Today` panel (still useful as the at-a-glance size mix).
 
-#### 6. Condition Codes — Complete reference page
-- Add **Body Locations grid** (Collar, Chest, Belly, Tail, LF, RF, RT, RB, FT, LB) with descriptions
-- Add **Severity Rating panel** with the NXT/1/2/3/4 scale and their meanings
-- Split the codes table into **Live Defects** and **Defects in Hide** (two side-by-side tables), with the "In Hide?" column indicator
+The screen will then contain: 5 KPI cards → Size Category Snapshot panel. Nothing else.
 
-### Technical Details
+`InTreatmentDialog` import and `treatmentOpen` state are removed. `useCullProjections`, `useAiAdvisory`, `useUploadLogs` imports are removed from this file.
 
-**Files to edit:**
-- `src/pages/DashboardScreen.tsx` — computed alerts, 2 new KPIs, real activity feed
-- `src/components/InTreatmentDialog.tsx` — group-by-line, condition filter, print checklist
-- `src/pages/PenMapScreen.tsx` — batch filter, print function, row summary
-- `src/pages/CrocProfileScreen.tsx` — feed history, size progress bar, projected timeline
-- `src/pages/AnalyticsScreen.tsx` — healing trajectories, batch comparison panels
-- `src/pages/ConditionCodesScreen.tsx` — body locations, severity scale, live/hide split
+## 4. Pen Map — Condition Breakdown panel (`src/pages/PenMapScreen.tsx`)
+Add a new panel beneath (or beside) the existing pen grid that lists every condition code present in the **currently selected pen** (respecting only the pen selector, not the in-grid filters — so the count is a stable reference) with a count of affected crocs.
 
-**No new tables needed** — all data comes from existing `crocs`, `inspections`, `feed_records`, and `condition_codes` tables.
+Implementation:
+- Use existing `countConditions(crocs)` from `crocUtils.ts` (already counts per code).
+- Render as a two-column list: `code — name` (from `useConditionCodes`) and the count, sorted descending by count.
+- Group/parse codes by their **type prefix** via `parseConditionCode` so e.g. `THChest` and `THTail` both roll up under `TH — Tooth Hole` with a sub-list of locations and per-location counts.
+- Place this panel in the right rail (the `xl:grid-cols-[1fr_220px]` column), or add a new full-width row below the grid on smaller viewports. Default: full-width row beneath the grid for clarity.
+- Title: `Conditions in {pen}` with a pill showing total flagged crocs.
+- An "ALL" toggle in the existing pen selector (already present elsewhere as `'ALL'` for Feed) is **not** added here — the client said "selected pen (or combined pen view)", so we add a `Both (GH1+GH2)` option to the pen `<select>` in this screen only and have the breakdown panel honour it. When `Both` is chosen, the grid hides (or shows GH1 then GH2 stacked — TBD during implementation; default to: grid stays on the last single pen, breakdown shows combined). Simpler default: keep grid bound to the single pen selection and only widen the breakdown's data fetch via `useAllCrocs` when `Both` is picked.
 
-**Batch filter logic:**
-```typescript
-const batchRanges = [
-  { label: '5000–5600', min: 5000, max: 5600 },
-  { label: '5601–6200', min: 5601, max: 6200 },
-  // etc.
-];
-// Filter by parsing tag as number
-const inBatch = !batchFilter || (parseInt(croc.tag) >= batch.min && parseInt(croc.tag) <= batch.max);
-```
+## 5. Memory updates
+- Update `mem://features/cull-management` to note the new horizon semantics (NX/1/2/3) and the dashboard's role as the cull-counter cockpit.
+- Update `mem://features/farm-management-alerts` to mark cluster detection as removed from the dashboard (still computable in code if needed later).
+- Add a short `mem://features/dashboard-simplification` note recording the client's "less is more" preference so future agents don't re-add panels.
 
-**Cluster detection (Dashboard alerts):**
-```typescript
-// Group conditions by line, flag any line with 3+ of the same condition
-const lineCondCounts: Record<string, Record<string, number>> = {};
-crocs.forEach(c => c.condition_codes.forEach(code => {
-  lineCondCounts[c.line] ??= {};
-  lineCondCounts[c.line][code] = (lineCondCounts[c.line][code] || 0) + 1;
-}));
-const alerts = Object.entries(lineCondCounts).flatMap(([line, codes]) =>
-  Object.entries(codes).filter(([_, count]) => count >= 3).map(([code, count]) =>
-    `${count} ${code} flags on Line ${line}`
-  )
-);
-```
+## Files touched
+- `src/components/AppSidebar.tsx` — remove 2 nav entries.
+- `src/lib/crocUtils.ts` — add `cullMarkerHorizon`, adjust `cullEligibleCycle` mapping.
+- `src/pages/DashboardScreen.tsx` — large rewrite: 5 new KPIs, drill-down dialog, drop 4 panels.
+- `src/components/CullHorizonDialog.tsx` — new file, size-band breakdown for a horizon group.
+- `src/pages/PenMapScreen.tsx` — add `Both` pen option + condition breakdown panel.
+- Memory files as listed above.
 
+## Out of scope
+- Forecast and Feed source files remain on disk untouched.
+- Analytics, Croc Profile, Condition Codes, Data Upload screens unchanged.
+- No DB schema changes; cull markers continue to live in `cull_schedule` text column.
