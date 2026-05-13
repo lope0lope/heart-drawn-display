@@ -392,8 +392,10 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                 </div>
               ))}
             </div>
-          </div>
         )}
+
+        {/* Conditions Breakdown */}
+        <ConditionBreakdown crocs={crocs} pen={pen} conditionDefs={conditionDefs} />
       </div>
 
       {/* Row Summary Sidebar */}
