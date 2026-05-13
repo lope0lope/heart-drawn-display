@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid } from '@/lib/crocUtils';
+import { useCrocs, useAllCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
+import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid, countConditions } from '@/lib/crocUtils';
 import { matchesConditionFilter, parseConditionCode, extractTypes, extractLocations } from '@/lib/conditionUtils';
 
 const BATCH_RANGES = [
