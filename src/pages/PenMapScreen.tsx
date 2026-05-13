@@ -31,7 +31,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [gradeFilter, setGradeFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState(0); // index into BATCH_RANGES
 
-  const { data: crocs, isLoading } = useCrocs(pen);
+  const { data: crocs, isLoading } = useCrocs(pen === 'ALL' ? undefined : pen);
   const { data: allCrocs } = useAllCrocs();
   const { data: conditionDefs } = useConditionCodes();
 
