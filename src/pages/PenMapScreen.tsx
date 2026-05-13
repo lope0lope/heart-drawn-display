@@ -32,6 +32,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [batchFilter, setBatchFilter] = useState(0); // index into BATCH_RANGES
 
   const { data: crocs, isLoading } = useCrocs(pen);
+  const { data: allCrocs } = useAllCrocs();
   const { data: conditionDefs } = useConditionCodes();
 
   useEffect(() => {
@@ -218,6 +219,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
           <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={pen} onChange={e => setPen(e.target.value)}>
             <option value="GH1">GH1</option>
             <option value="GH2">GH2</option>
+            <option value="ALL">Both (GH1+GH2)</option>
           </select>
           <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={mode} onChange={e => setMode(e.target.value)}>
             <option value="health">Heatmap: Health Status</option>
