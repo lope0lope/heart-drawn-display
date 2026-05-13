@@ -95,31 +95,30 @@ export function getOccupied(crocs: CrocRecord[]): CrocRecord[] {
 }
 
 /**
- * Earliest cycle (0 = current) at which the croc may be culled, based on the
- * staff-recorded `cull_schedule` from inspection uploads, and active health
- * conditions. Returns `null` if the croc must be excluded entirely (on
- * treatment hold without an explicit clearance schedule).
+ * Staff-recorded cull horizon. Returns the number of cycles until the croc is
+ * to be culled, based ONLY on the `cull_schedule` marker the inspector wrote
+ * during their report. Active conditions do NOT block this — staff judgement
+ * is the single source of truth.
  *
- *   cull_schedule '1'   -> 0 (eligible now)
- *   cull_schedule 'NXT' -> 1
- *   cull_schedule '2'   -> 2
- *   cull_schedule '3'   -> 3
- *   cull_schedule '4'   -> 4
- *   empty + no active (non-CULL) conditions -> 0
- *   empty + has active conditions -> null (held until staff sets a schedule)
+ *   'NX' / 'NXT' / 'NEXT' -> 0  (ready next cycle)
+ *   '1'                   -> 1  (1 more cycle after next)
+ *   '2'                   -> 2
+ *   '3'                   -> 3
+ *   anything else / empty -> null (not marked for cull)
  */
-export function cullEligibleCycle(croc: CrocRecord): number | null {
+export function cullMarkerHorizon(croc: CrocRecord): 0 | 1 | 2 | 3 | null {
   const raw = (croc.cull_schedule ?? '').trim().toUpperCase();
-  if (raw === '1') return 0;
-  if (raw === 'NXT' || raw === 'NEXT') return 1;
+  if (raw === 'NX' || raw === 'NXT' || raw === 'NEXT') return 0;
+  if (raw === '1') return 1;
   if (raw === '2') return 2;
   if (raw === '3') return 3;
-  if (raw === '4') return 4;
+  return null;
+}
 
-  // No explicit schedule — check for active (non-CULL) condition flags
-  const activeConditions = (croc.condition_codes ?? []).filter(
-    c => !c.toUpperCase().startsWith('CULL-')
-  );
-  if (activeConditions.length > 0) return null; // on treatment hold
-  return 0;
+/**
+ * Legacy helper retained for non-dashboard callers. Mirrors `cullMarkerHorizon`
+ * semantics so the whole app uses one mapping.
+ */
+export function cullEligibleCycle(croc: CrocRecord): number | null {
+  return cullMarkerHorizon(croc);
 }
