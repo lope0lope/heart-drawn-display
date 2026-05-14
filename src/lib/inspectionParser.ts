@@ -142,18 +142,16 @@ function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, f
 
 /**
  * Parses the client XLSX template with fixed 4-column blocks:
- * line names on rows 2/60/118/176, dates below, Pen/Cm/Gr/Tag headers below that,
- * then 54 data rows per block.
+ * B:E, G:J, L:O, Q:T, with each block containing Pen/Cm/Gr/Tag headers
+ * and then 54 data rows.
  */
-function parseFixedGridLayout(rows: any[][], penId: string, lineRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
 
-  for (let rowGroup = 0; rowGroup < lineRows.length; rowGroup++) {
-    const lineRow = lineRows[rowGroup];
-    const dateRow = lineRow + 1;
-    const headerRow = lineRow + 2;
+  for (let rowGroup = 0; rowGroup < headerRows.length; rowGroup++) {
+    const headerRow = headerRows[rowGroup];
 
     for (let colGroup = 0; colGroup < startCols.length; colGroup++) {
       const start = startCols[colGroup];
@@ -174,7 +172,7 @@ function parseFixedGridLayout(rows: any[][], penId: string, lineRows: number[], 
       if (penOffset < 0 || sizeOffset < 0 || tagOffset < 0) continue;
 
       const line = fallbackLine;
-      const inspection_date = toIsoDate(rows[dateRow]?.[start]) ?? findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
+      const inspection_date = findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
       if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
 
       for (let i = 0; i < 54; i++) {
