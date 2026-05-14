@@ -96,6 +96,110 @@ function looksLikeGrid(rows: any[][]): boolean {
 /** Block-header cell may be just a letter ("A") or letter+digits ("M1"). */
 const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
+const FIXED_GRID_HEADER_ROWS = [1, 59, 117, 175]; // Excel rows 2, 60, 118, 176
+const FIXED_GRID_START_COLS = [1, 6, 11, 16]; // Excel columns B, G, L, Q
+const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
+
+function parseNumber(v: any): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseInteger(v: any): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : parseInt(String(v), 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function findDateNearBlock(rows: any[][], headerRow: number, startCol: number): string | null {
+  for (let r = Math.max(0, headerRow - 3); r < headerRow; r++) {
+    for (let c = startCol; c < startCol + 4; c++) {
+      const iso = toIsoDate(rows[r]?.[c]);
+      if (iso) return iso;
+    }
+  }
+  return null;
+}
+
+function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, fallback: string): string {
+  for (let r = Math.max(0, headerRow - 3); r < headerRow; r++) {
+    for (let c = startCol; c < startCol + 4; c++) {
+      const m = String(rows[r]?.[c] ?? '').trim().match(BLOCK_LETTER_RE);
+      if (m) return m[1].toUpperCase();
+    }
+  }
+  return fallback;
+}
+
+/**
+ * Parses the client XLSX template with fixed 4-column blocks:
+ * B:E, G:J, L:O, Q:T on Excel rows 2/60/118/176, 54 data rows per block.
+ */
+function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const out: ParsedInspectionRow[] = [];
+  const warnings: string[] = [];
+  let maxDate: string | null = null;
+  let blockIndex = 0;
+
+  for (const headerRow of FIXED_GRID_HEADER_ROWS) {
+    for (const start of FIXED_GRID_START_COLS) {
+      const fallbackLine = FIXED_GRID_LINES[blockIndex];
+      if (!fallbackLine) break;
+
+      const header = rows[headerRow] ?? [];
+      const cells = [0, 1, 2, 3].map(offset => String(header[start + offset] ?? '').trim().toLowerCase());
+      const hasAnyHeader = cells.some(Boolean);
+      if (!hasAnyHeader) continue;
+
+      const penOffset = cells.indexOf('pen');
+      const sizeOffset = cells.findIndex(h => h === 'cm' || h === 'size' || h === 'belly_cm');
+      const gradeOffset = cells.findIndex(h => h === 'gr' || h === 'grade' || h === 'rating');
+      const tagOffset = cells.findIndex(h => h === 'tag' || h === 'id' || h === 'tag_id');
+
+      if (penOffset < 0 || sizeOffset < 0 || tagOffset < 0) continue;
+
+      const line = findLineNearBlock(rows, headerRow, start, fallbackLine);
+      const inspection_date = findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
+      if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
+
+      for (let i = 0; i < 54; i++) {
+        const rowIndex = headerRow + 1 + i;
+        const drow = rows[rowIndex] ?? [];
+        const tagRaw = drow[start + tagOffset];
+        const tag = tagRaw == null ? '' : String(tagRaw).trim();
+        if (!tag) continue;
+
+        const penCell = String(drow[start + penOffset] ?? '').trim();
+        const slotMatch = penCell.match(/^([A-Z])\s*(\d+)$/i);
+        const slot = slotMatch ? parseInt(slotMatch[2], 10) : i + 1;
+
+        out.push({
+          pen: penId,
+          line,
+          pen_slot: slot,
+          tag,
+          belly_cm: parseNumber(drow[start + sizeOffset]),
+          conditions: [],
+          last_inspected: '',
+          cull: '',
+          grade: gradeOffset >= 0 ? parseInteger(drow[start + gradeOffset]) : null,
+          inspection_date,
+          csvRow: rowIndex + 1,
+        });
+      }
+
+      blockIndex++;
+    }
+  }
+
+  if (out.length > 0 && out.length < 700) {
+    warnings.push(`Fixed grid parsed ${out.length} records; expected close to 750. Check for blank Tag cells in the source file.`);
+  }
+
+  return { rows: out, warnings, maxDate };
+}
+
 function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
