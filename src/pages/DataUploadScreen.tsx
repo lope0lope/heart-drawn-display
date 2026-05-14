@@ -156,13 +156,14 @@ export default function DataUploadScreen() {
       //    then insert the fresh ones (preserves all other historical
       //    inspections so growth charts work).
       const crocIds = [...new Set(rows.map(r => tagToId.get(r.tag)).filter(Boolean) as number[])];
+      const datesInBatch = [...new Set(rows.map(r => r.inspection_date || inspectionDate))];
       if (crocIds.length) {
         for (let i = 0; i < crocIds.length; i += 500) {
           await supabase
             .from('inspections')
             .delete()
             .in('croc_id', crocIds.slice(i, i + 500))
-            .eq('inspection_date', inspectionDate);
+            .in('inspection_date', datesInBatch);
         }
       }
 
