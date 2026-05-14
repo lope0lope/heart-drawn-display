@@ -174,7 +174,7 @@ export default function DataUploadScreen() {
           if (cullCode) condCodes.push(cullCode);
           return {
             croc_id: tagToId.get(r.tag)!,
-            inspection_date: inspectionDate,
+            inspection_date: r.inspection_date || inspectionDate,
             belly_cm: r.belly_cm,
             condition_codes: condCodes,
           };
