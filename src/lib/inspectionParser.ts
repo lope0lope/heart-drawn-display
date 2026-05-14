@@ -212,7 +212,7 @@ function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[]
 }
 
 function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
-  const attempts = FIXED_GRID_LAYOUTS.map(layout => parseFixedGridLayout(rows, penId, layout.lineRows, layout.startCols));
+  const attempts = FIXED_GRID_LAYOUTS.map(layout => parseFixedGridLayout(rows, penId, layout.headerRows, layout.startCols));
   return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
 }
 
