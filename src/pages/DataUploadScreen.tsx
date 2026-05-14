@@ -92,8 +92,7 @@ export default function DataUploadScreen() {
 
       // 2. For NEW tags → insert a crocs row using this inspection's data
       //    For EXISTING tags → only UPDATE the live fields if this inspection
-      //    is newer than the croc's stored inspection_date (keeps "live" view
-      //    pinned to latest data, while older uploads just append history).
+      //    is newer than the croc's stored inspection_date.
       const newCrocPayloads: any[] = [];
       const updatesNewer: { id: number; payload: any }[] = [];
 
@@ -102,13 +101,17 @@ export default function DataUploadScreen() {
         const cullCode = cullToConditionCode(r.cull);
         if (cullCode) condCodes.push(cullCode);
 
+        const rowDate = r.inspection_date || inspectionDate;
+
         const liveFields = {
           tag: r.tag,
           pen_id: r.pen,
+          line: r.line,
+          pen_slot: r.pen_slot,
           belly_cm: r.belly_cm,
           grade: r.grade,
           condition_codes: condCodes,
-          inspection_date: inspectionDate,
+          inspection_date: rowDate,
           cull_schedule: r.cull || null,
         };
 
@@ -117,10 +120,9 @@ export default function DataUploadScreen() {
           newCrocPayloads.push(liveFields);
         } else {
           const existingDate = existing.inspection_date ?? '';
-          if (inspectionDate >= existingDate) {
+          if (rowDate >= existingDate) {
             updatesNewer.push({ id: existing.id, payload: liveFields });
           }
-          // else: older upload — just record an inspection, leave live row alone
         }
       }
 
@@ -154,13 +156,14 @@ export default function DataUploadScreen() {
       //    then insert the fresh ones (preserves all other historical
       //    inspections so growth charts work).
       const crocIds = [...new Set(rows.map(r => tagToId.get(r.tag)).filter(Boolean) as number[])];
+      const datesInBatch = [...new Set(rows.map(r => r.inspection_date || inspectionDate))];
       if (crocIds.length) {
         for (let i = 0; i < crocIds.length; i += 500) {
           await supabase
             .from('inspections')
             .delete()
             .in('croc_id', crocIds.slice(i, i + 500))
-            .eq('inspection_date', inspectionDate);
+            .in('inspection_date', datesInBatch);
         }
       }
 
@@ -172,7 +175,7 @@ export default function DataUploadScreen() {
           if (cullCode) condCodes.push(cullCode);
           return {
             croc_id: tagToId.get(r.tag)!,
-            inspection_date: inspectionDate,
+            inspection_date: r.inspection_date || inspectionDate,
             belly_cm: r.belly_cm,
             condition_codes: condCodes,
           };
@@ -318,6 +321,31 @@ export default function DataUploadScreen() {
     }
   }, [parsed, fileName, queryClient, refetchLogs]);
 
+  const handleWipeAll = useCallback(async () => {
+    const ok = window.confirm(
+      'Wipe ALL croc data?\n\nThis permanently deletes every croc, inspection, cull record and upload log. This cannot be undone.'
+    );
+    if (!ok) return;
+    const ok2 = window.prompt('Type WIPE to confirm:') === 'WIPE';
+    if (!ok2) return;
+
+    setImporting(true);
+    try {
+      // Delete in dependency order
+      await supabase.from('inspections').delete().gt('id', 0);
+      await supabase.from('cull_records').delete().gt('id', 0);
+      await supabase.from('crocs').delete().gt('id', 0);
+      await supabase.from('upload_logs').delete().gt('id', 0);
+      queryClient.invalidateQueries();
+      refetchLogs();
+      toast.success('All croc data wiped.');
+    } catch (err: any) {
+      toast.error(err.message || 'Wipe failed');
+    } finally {
+      setImporting(false);
+    }
+  }, [queryClient, refetchLogs]);
+
   const handleExport = async (type: 'live' | 'history') => {
     setExporting(type);
     try {
@@ -367,18 +395,28 @@ export default function DataUploadScreen() {
 
             {/* Expected format */}
             <div className="mt-4">
-              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Expected CSV format</div>
-              <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[2] bg-surface-2 p-3 rounded-sm border border-border">
-                <span className="text-ct-accent">Row 1:</span> Inspection date, 2026/04/15<br />
-                <span className="text-ct-accent">Row 2:</span> (empty)<br />
-                <span className="text-ct-accent">Row 3:</span> Pen, ID, size, Condition, Last inspected, Cull, Rating<br />
-                <span className="text-ct-accent">Row 4+:</span> 150, 1112, 35, "THChest,RTail", 2026/02/15, 1, 1
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Supported formats</div>
+              <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[1.8] bg-surface-2 p-3 rounded-sm border border-border">
+                <strong className="text-ct-accent">Grid layout (e.g. GH1_Sizes_Mar_26.xlsx):</strong> blocks of pen letters (A,B,C…) across columns, with 54 slot rows per block. Pen ID is taken from the file name (GH1 / GH2). Each block carries its own inspection date.<br />
+                <strong className="text-ct-accent">Flat layout:</strong> Row 1 inspection date · Row 3 headers <em>Pen, ID, size, Condition, Last inspected, Cull, Rating</em> · Row 4+ data.
               </div>
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
                 <strong className="text-ct-text2">Cull values:</strong> 1 = now · NXT = next cycle · 2 = 2 cycles · 3 = 3 cycles<br />
-                <strong className="text-ct-text2">Condition:</strong> Comma-separated codes (e.g. THChest,RTail for two defects)<br />
-                <strong className="text-ct-text2">Re-upload:</strong> Historical inspections are preserved — uploads from older dates only append history; uploads from newer/equal dates also refresh the croc's "live" fields. Edit/delete individual records below.
+                <strong className="text-ct-text2">Re-upload:</strong> Older inspections append history; newer/equal dates also refresh the croc's "live" fields.
               </div>
+            </div>
+
+            {/* Danger zone — wipe everything */}
+            <div className="mt-4 border border-ct-danger/40 rounded-sm p-3 bg-[rgba(220,80,80,.04)]">
+              <div className="font-mono-ibm text-[9px] text-ct-danger tracking-[2px] uppercase mb-1.5">Danger zone</div>
+              <div className="text-[11px] text-ct-text2 mb-2">Permanently delete every croc, inspection, cull record and upload log.</div>
+              <button
+                onClick={handleWipeAll}
+                disabled={importing}
+                className="bg-transparent text-ct-danger border border-ct-danger px-3 py-1.5 font-mono-ibm text-[10px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 hover:bg-ct-danger hover:text-background transition-all"
+              >
+                Wipe all croc data
+              </button>
             </div>
           </div>
         </div>
