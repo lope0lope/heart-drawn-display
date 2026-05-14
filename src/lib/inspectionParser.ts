@@ -97,10 +97,14 @@ function looksLikeGrid(rows: any[][]): boolean {
 const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
 const FIXED_GRID_LAYOUTS = [
-  { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Excel rows/columns as addressed in the template
-  { headerRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // XLSX can trim blank left margin from the used range
-  { headerRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // XLSX can trim blank top margin from the used range
-  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top and left margins from the used range
+  { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Pen/Cm/Gr/Tag at B2/G2/L2/Q2, etc.
+  { headerRows: [3, 61, 119, 177], startCols: [1, 6, 11, 16] }, // line name + date above the column headers
+  { headerRows: [2, 60, 118, 176], startCols: [1, 6, 11, 16] }, // date immediately above row-3 style templates
+  { headerRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // trimmed top margin
+  { headerRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // trimmed left margin
+  { headerRows: [3, 61, 119, 177], startCols: [0, 5, 10, 15] },
+  { headerRows: [2, 60, 118, 176], startCols: [0, 5, 10, 15] },
+  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] },
 ];
 const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
 
@@ -138,19 +142,22 @@ function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, f
 
 /**
  * Parses the client XLSX template with fixed 4-column blocks:
- * B:E, G:J, L:O, Q:T on Excel rows 2/60/118/176, 54 data rows per block.
+ * B:E, G:J, L:O, Q:T, with each block containing Pen/Cm/Gr/Tag headers
+ * and then 54 data rows.
  */
 function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
-  let blockIndex = 0;
 
-  for (const headerRow of headerRows) {
-    for (const start of startCols) {
+  for (let rowGroup = 0; rowGroup < headerRows.length; rowGroup++) {
+    const headerRow = headerRows[rowGroup];
+
+    for (let colGroup = 0; colGroup < startCols.length; colGroup++) {
+      const start = startCols[colGroup];
+      const blockIndex = rowGroup * 4 + colGroup;
       const fallbackLine = FIXED_GRID_LINES[blockIndex];
       if (!fallbackLine) break;
-      blockIndex++;
 
       const header = rows[headerRow] ?? [];
       const cells = [0, 1, 2, 3].map(offset => String(header[start + offset] ?? '').trim().toLowerCase());
