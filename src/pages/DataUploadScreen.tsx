@@ -92,8 +92,7 @@ export default function DataUploadScreen() {
 
       // 2. For NEW tags → insert a crocs row using this inspection's data
       //    For EXISTING tags → only UPDATE the live fields if this inspection
-      //    is newer than the croc's stored inspection_date (keeps "live" view
-      //    pinned to latest data, while older uploads just append history).
+      //    is newer than the croc's stored inspection_date.
       const newCrocPayloads: any[] = [];
       const updatesNewer: { id: number; payload: any }[] = [];
 
@@ -102,13 +101,17 @@ export default function DataUploadScreen() {
         const cullCode = cullToConditionCode(r.cull);
         if (cullCode) condCodes.push(cullCode);
 
+        const rowDate = r.inspection_date || inspectionDate;
+
         const liveFields = {
           tag: r.tag,
           pen_id: r.pen,
+          line: r.line,
+          pen_slot: r.pen_slot,
           belly_cm: r.belly_cm,
           grade: r.grade,
           condition_codes: condCodes,
-          inspection_date: inspectionDate,
+          inspection_date: rowDate,
           cull_schedule: r.cull || null,
         };
 
@@ -117,10 +120,9 @@ export default function DataUploadScreen() {
           newCrocPayloads.push(liveFields);
         } else {
           const existingDate = existing.inspection_date ?? '';
-          if (inspectionDate >= existingDate) {
+          if (rowDate >= existingDate) {
             updatesNewer.push({ id: existing.id, payload: liveFields });
           }
-          // else: older upload — just record an inspection, leave live row alone
         }
       }
 
