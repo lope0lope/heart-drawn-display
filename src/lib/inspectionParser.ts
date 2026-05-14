@@ -97,10 +97,10 @@ function looksLikeGrid(rows: any[][]): boolean {
 const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
 const FIXED_GRID_LAYOUTS = [
-  { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Excel rows/columns as addressed in the template
-  { headerRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // XLSX can trim blank left margin from the used range
-  { headerRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // XLSX can trim blank top margin from the used range
-  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top and left margins from the used range
+  { lineRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // line names at B2/G2/L2/Q2, etc.
+  { lineRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // XLSX can trim blank left margin from the used range
+  { lineRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // XLSX can trim blank top margin from the used range
+  { lineRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top and left margins from the used range
 ];
 const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
 
@@ -138,19 +138,24 @@ function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, f
 
 /**
  * Parses the client XLSX template with fixed 4-column blocks:
- * B:E, G:J, L:O, Q:T on Excel rows 2/60/118/176, 54 data rows per block.
+ * line names on rows 2/60/118/176, dates below, Pen/Cm/Gr/Tag headers below that,
+ * then 54 data rows per block.
  */
-function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+function parseFixedGridLayout(rows: any[][], penId: string, lineRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
-  let blockIndex = 0;
 
-  for (const headerRow of headerRows) {
-    for (const start of startCols) {
+  for (let rowGroup = 0; rowGroup < lineRows.length; rowGroup++) {
+    const lineRow = lineRows[rowGroup];
+    const dateRow = lineRow + 1;
+    const headerRow = lineRow + 2;
+
+    for (let colGroup = 0; colGroup < startCols.length; colGroup++) {
+      const start = startCols[colGroup];
+      const blockIndex = rowGroup * 4 + colGroup;
       const fallbackLine = FIXED_GRID_LINES[blockIndex];
       if (!fallbackLine) break;
-      blockIndex++;
 
       const header = rows[headerRow] ?? [];
       const cells = [0, 1, 2, 3].map(offset => String(header[start + offset] ?? '').trim().toLowerCase());
@@ -165,7 +170,7 @@ function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[]
       if (penOffset < 0 || sizeOffset < 0 || tagOffset < 0) continue;
 
       const line = fallbackLine;
-      const inspection_date = findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
+      const inspection_date = toIsoDate(rows[dateRow]?.[start]) ?? findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
       if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
 
       for (let i = 0; i < 54; i++) {
