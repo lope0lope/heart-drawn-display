@@ -164,7 +164,7 @@ function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[]
 
       if (penOffset < 0 || sizeOffset < 0 || tagOffset < 0) continue;
 
-      const line = findLineNearBlock(rows, headerRow, start, fallbackLine);
+      const line = fallbackLine;
       const inspection_date = findDateNearBlock(rows, headerRow, start) ?? new Date().toISOString().slice(0, 10);
       if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
 
