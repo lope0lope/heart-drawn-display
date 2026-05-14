@@ -86,12 +86,15 @@ function looksLikeGrid(rows: any[][]): boolean {
     let letterCount = 0;
     for (const cell of row) {
       const s = String(cell ?? '').trim();
-      if (/^[A-Z]$/i.test(s)) letterCount++;
+      if (/^[A-Z]\d*$/i.test(s)) letterCount++;
     }
     if (letterCount >= 2) return true;
   }
   return false;
 }
+
+/** Block-header cell may be just a letter ("A") or letter+digits ("M1"). */
+const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
 function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
