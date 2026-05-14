@@ -98,7 +98,9 @@ const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
 const FIXED_GRID_LAYOUTS = [
   { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Excel rows/columns as addressed in the template
-  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top/left margins from the used range
+  { headerRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // XLSX can trim blank left margin from the used range
+  { headerRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // XLSX can trim blank top margin from the used range
+  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top and left margins from the used range
 ];
 const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
 
