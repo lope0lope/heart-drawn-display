@@ -109,7 +109,8 @@ function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[];
     const letterCols: { col: number; letter: string }[] = [];
     for (let c = 0; c < row.length; c++) {
       const s = String(row[c] ?? '').trim();
-      if (/^[A-Z]$/i.test(s)) letterCols.push({ col: c, letter: s.toUpperCase() });
+      const m = s.match(BLOCK_LETTER_RE);
+      if (m) letterCols.push({ col: c, letter: m[1].toUpperCase() });
     }
     if (letterCols.length < 2) continue;
 
