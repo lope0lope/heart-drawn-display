@@ -96,8 +96,10 @@ function looksLikeGrid(rows: any[][]): boolean {
 /** Block-header cell may be just a letter ("A") or letter+digits ("M1"). */
 const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
-const FIXED_GRID_HEADER_ROWS = [1, 59, 117, 175]; // Excel rows 2, 60, 118, 176
-const FIXED_GRID_START_COLS = [1, 6, 11, 16]; // Excel columns B, G, L, Q
+const FIXED_GRID_LAYOUTS = [
+  { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Excel rows/columns as addressed in the template
+  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top/left margins from the used range
+];
 const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
 
 function parseNumber(v: any): number | null {
@@ -136,16 +138,17 @@ function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, f
  * Parses the client XLSX template with fixed 4-column blocks:
  * B:E, G:J, L:O, Q:T on Excel rows 2/60/118/176, 54 data rows per block.
  */
-function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
   let blockIndex = 0;
 
-  for (const headerRow of FIXED_GRID_HEADER_ROWS) {
-    for (const start of FIXED_GRID_START_COLS) {
+  for (const headerRow of headerRows) {
+    for (const start of startCols) {
       const fallbackLine = FIXED_GRID_LINES[blockIndex];
       if (!fallbackLine) break;
+      blockIndex++;
 
       const header = rows[headerRow] ?? [];
       const cells = [0, 1, 2, 3].map(offset => String(header[start + offset] ?? '').trim().toLowerCase());
@@ -189,7 +192,6 @@ function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionR
         });
       }
 
-      blockIndex++;
     }
   }
 
@@ -198,6 +200,11 @@ function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionR
   }
 
   return { rows: out, warnings, maxDate };
+}
+
+function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const attempts = FIXED_GRID_LAYOUTS.map(layout => parseFixedGridLayout(rows, penId, layout.headerRows, layout.startCols));
+  return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
 }
 
 function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
