@@ -201,6 +201,9 @@ function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionR
 }
 
 function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const fixed = parseFixedGrid(rows, penId);
+  if (fixed.rows.length > 0) return fixed;
+
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
