@@ -395,18 +395,28 @@ export default function DataUploadScreen() {
 
             {/* Expected format */}
             <div className="mt-4">
-              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Expected CSV format</div>
-              <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[2] bg-surface-2 p-3 rounded-sm border border-border">
-                <span className="text-ct-accent">Row 1:</span> Inspection date, 2026/04/15<br />
-                <span className="text-ct-accent">Row 2:</span> (empty)<br />
-                <span className="text-ct-accent">Row 3:</span> Pen, ID, size, Condition, Last inspected, Cull, Rating<br />
-                <span className="text-ct-accent">Row 4+:</span> 150, 1112, 35, "THChest,RTail", 2026/02/15, 1, 1
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Supported formats</div>
+              <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[1.8] bg-surface-2 p-3 rounded-sm border border-border">
+                <strong className="text-ct-accent">Grid layout (e.g. GH1_Sizes_Mar_26.xlsx):</strong> blocks of pen letters (A,B,C…) across columns, with 54 slot rows per block. Pen ID is taken from the file name (GH1 / GH2). Each block carries its own inspection date.<br />
+                <strong className="text-ct-accent">Flat layout:</strong> Row 1 inspection date · Row 3 headers <em>Pen, ID, size, Condition, Last inspected, Cull, Rating</em> · Row 4+ data.
               </div>
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
                 <strong className="text-ct-text2">Cull values:</strong> 1 = now · NXT = next cycle · 2 = 2 cycles · 3 = 3 cycles<br />
-                <strong className="text-ct-text2">Condition:</strong> Comma-separated codes (e.g. THChest,RTail for two defects)<br />
-                <strong className="text-ct-text2">Re-upload:</strong> Historical inspections are preserved — uploads from older dates only append history; uploads from newer/equal dates also refresh the croc's "live" fields. Edit/delete individual records below.
+                <strong className="text-ct-text2">Re-upload:</strong> Older inspections append history; newer/equal dates also refresh the croc's "live" fields.
               </div>
+            </div>
+
+            {/* Danger zone — wipe everything */}
+            <div className="mt-4 border border-ct-danger/40 rounded-sm p-3 bg-[rgba(220,80,80,.04)]">
+              <div className="font-mono-ibm text-[9px] text-ct-danger tracking-[2px] uppercase mb-1.5">Danger zone</div>
+              <div className="text-[11px] text-ct-text2 mb-2">Permanently delete every croc, inspection, cull record and upload log.</div>
+              <button
+                onClick={handleWipeAll}
+                disabled={importing}
+                className="bg-transparent text-ct-danger border border-ct-danger px-3 py-1.5 font-mono-ibm text-[10px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 hover:bg-ct-danger hover:text-background transition-all"
+              >
+                Wipe all croc data
+              </button>
             </div>
           </div>
         </div>
