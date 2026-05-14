@@ -321,6 +321,31 @@ export default function DataUploadScreen() {
     }
   }, [parsed, fileName, queryClient, refetchLogs]);
 
+  const handleWipeAll = useCallback(async () => {
+    const ok = window.confirm(
+      'Wipe ALL croc data?\n\nThis permanently deletes every croc, inspection, cull record and upload log. This cannot be undone.'
+    );
+    if (!ok) return;
+    const ok2 = window.prompt('Type WIPE to confirm:') === 'WIPE';
+    if (!ok2) return;
+
+    setImporting(true);
+    try {
+      // Delete in dependency order
+      await supabase.from('inspections').delete().gt('id', 0);
+      await supabase.from('cull_records').delete().gt('id', 0);
+      await supabase.from('crocs').delete().gt('id', 0);
+      await supabase.from('upload_logs').delete().gt('id', 0);
+      queryClient.invalidateQueries();
+      refetchLogs();
+      toast.success('All croc data wiped.');
+    } catch (err: any) {
+      toast.error(err.message || 'Wipe failed');
+    } finally {
+      setImporting(false);
+    }
+  }, [queryClient, refetchLogs]);
+
   const handleExport = async (type: 'live' | 'history') => {
     setExporting(type);
     try {
