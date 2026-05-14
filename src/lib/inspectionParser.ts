@@ -137,17 +137,41 @@ function findLineNearBlock(rows: any[][], headerRow: number, startCol: number, f
 }
 
 /**
- * Parses the client XLSX template with fixed 4-column blocks:
- * B:E, G:J, L:O, Q:T, with each block containing Pen/Cm/Gr/Tag headers
- * and then 54 data rows.
+ * Within a search window of rows around `anchor`, find a row whose cells at
+ * the given startCols match the Pen/Cm/Gr/Tag header pattern. Returns the
+ * row index, or -1.
  */
-function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[], startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+function findHeaderRow(rows: any[][], anchor: number, startCols: number[]): number {
+  for (let delta = 0; delta <= 6; delta++) {
+    for (const sign of [0, 1, -1]) {
+      if (delta === 0 && sign !== 0) continue;
+      const r = anchor + sign * delta;
+      if (r < 0 || r >= rows.length) continue;
+      const row = rows[r] ?? [];
+      // Need at least one block at this row to have pen+tag+cm headers
+      let blocksMatched = 0;
+      for (const start of startCols) {
+        const cells = [0, 1, 2, 3].map(o => String(row[start + o] ?? '').trim().toLowerCase());
+        const hasPen = cells.includes('pen');
+        const hasTag = cells.some(h => h === 'tag' || h === 'id' || h === 'tag_id');
+        const hasSize = cells.some(h => h === 'cm' || h === 'size' || h === 'belly_cm');
+        if (hasPen && hasTag && hasSize) blocksMatched++;
+      }
+      if (blocksMatched >= 1) return r;
+    }
+  }
+  return -1;
+}
+
+function parseFixedGridLayout(rows: any[][], penId: string, startCols: number[]): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   let maxDate: string | null = null;
 
-  for (let rowGroup = 0; rowGroup < headerRows.length; rowGroup++) {
-    const headerRow = headerRows[rowGroup];
+  for (let rowGroup = 0; rowGroup < FIXED_GRID_ANCHORS.length; rowGroup++) {
+    const anchor = FIXED_GRID_ANCHORS[rowGroup];
+    const headerRow = findHeaderRow(rows, anchor, startCols);
+    if (headerRow < 0) continue;
 
     for (let colGroup = 0; colGroup < startCols.length; colGroup++) {
       const start = startCols[colGroup];
@@ -196,7 +220,6 @@ function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[]
           csvRow: rowIndex + 1,
         });
       }
-
     }
   }
 
@@ -208,7 +231,7 @@ function parseFixedGridLayout(rows: any[][], penId: string, headerRows: number[]
 }
 
 function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
-  const attempts = FIXED_GRID_LAYOUTS.map(layout => parseFixedGridLayout(rows, penId, layout.headerRows, layout.startCols));
+  const attempts = FIXED_GRID_START_COL_SETS.map(startCols => parseFixedGridLayout(rows, penId, startCols));
   return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
 }
 
