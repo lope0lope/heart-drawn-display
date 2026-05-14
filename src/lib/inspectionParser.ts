@@ -2,18 +2,23 @@ import * as Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
 export interface ParsedInspectionRow {
-  pen: string;
+  pen: string;          // greenhouse / pen_id (e.g. "GH1")
+  line: string;         // line letter within the pen (e.g. "A".."L")
+  pen_slot: number;     // 1..54
   tag: string;
   belly_cm: number | null;
   conditions: string[];
   last_inspected: string;
   cull: string;
   grade: number | null;
-  /** 1-based CSV row number for error reporting */
+  /** Inspection date for this specific row (block-level in grid format) */
+  inspection_date: string;
+  /** 1-based source row number for error reporting */
   csvRow: number;
 }
 
 export interface ParsedInspectionFile {
+  /** File-level inspection date (max of per-row dates, or today) */
   inspectionDate: string;
   rows: ParsedInspectionRow[];
   warnings: string[];
@@ -25,7 +30,7 @@ export function normaliseCull(raw: string): string {
   if (v === 'NXT' || v === 'NEXT') return 'NXT';
   if (['1', '2', '3', '4'].includes(v)) return v;
   if (v === '') return '';
-  return v; // keep unknown values as-is
+  return v;
 }
 
 /** Build the CULL-x condition code tag from cull field */
@@ -35,108 +40,259 @@ export function cullToConditionCode(cull: string): string | null {
   return `CULL-${n}`;
 }
 
-/**
- * Parse the farm inspection CSV/XLSX format:
- *   Row 1: "Inspection date, 2026/04/15"
- *   Row 2: empty
- *   Row 3: Headers — Pen, ID, size, Condition, Last inspected, Cull, Rating
- *   Row 4+: Data
- */
-export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
-  const warnings: string[] = [];
-  let allRows: string[][] = [];
+/** Try to extract a pen_id like "GH1" / "GH2" from the file name. Defaults to "GH1". */
+function inferPenIdFromFilename(filename: string): string {
+  const m = filename.toUpperCase().match(/GH\s*([0-9]+)/);
+  if (m) return `GH${m[1]}`;
+  return 'GH1';
+}
 
-  if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-    const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type: 'array' });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    allRows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as string[][];
-  } else {
-    const text = await file.text();
-    const result = Papa.parse(text, { header: false, skipEmptyLines: false });
-    allRows = result.data as string[][];
+function toIsoDate(v: any): string | null {
+  if (!v) return null;
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
+  const s = String(v).trim();
+  const m = s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  return null;
+}
+
+async function readSheet(file: File): Promise<any[][]> {
+  if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as any[][];
+  }
+  const text = await file.text();
+  const result = Papa.parse(text, { header: false, skipEmptyLines: false });
+  return result.data as any[][];
+}
+
+/**
+ * Detects whether the sheet uses the new "grid" layout:
+ *   - One or more "block headers" — a row containing single-letter cells (A, B, C…)
+ *   - Followed by a date row
+ *   - Followed by a header row containing "Pen" and one of "Tag" / "Cm" / "Size"
+ *   - Followed by ~54 data rows where col A of each sub-block is e.g. "A1".."A54"
+ */
+function looksLikeGrid(rows: any[][]): boolean {
+  for (let r = 0; r < Math.min(rows.length, 30); r++) {
+    const row = rows[r] ?? [];
+    let letterCount = 0;
+    for (const cell of row) {
+      const s = String(cell ?? '').trim();
+      if (/^[A-Z]$/i.test(s)) letterCount++;
+    }
+    if (letterCount >= 2) return true;
+  }
+  return false;
+}
+
+function parseGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const out: ParsedInspectionRow[] = [];
+  const warnings: string[] = [];
+  let maxDate: string | null = null;
+
+  // Find every "block header" row — a row with multiple single-letter cells.
+  // Then within each block, locate sub-blocks by their column index.
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    // Identify columns whose value is a single uppercase letter
+    const letterCols: { col: number; letter: string }[] = [];
+    for (let c = 0; c < row.length; c++) {
+      const s = String(row[c] ?? '').trim();
+      if (/^[A-Z]$/i.test(s)) letterCols.push({ col: c, letter: s.toUpperCase() });
+    }
+    if (letterCols.length < 2) continue;
+
+    // Expect: r = letters, r+1 = dates, r+2 = headers, r+3.. = data
+    const dateRow = rows[r + 1] ?? [];
+    const headerRow = rows[r + 2] ?? [];
+
+    // Verify header row contains "Pen"
+    const hasPen = headerRow.some(c => String(c ?? '').trim().toLowerCase() === 'pen');
+    if (!hasPen) continue;
+
+    // For each sub-block, work out which column holds which field
+    type Sub = {
+      letter: string;
+      penCol: number;
+      tagCol: number;
+      sizeCol: number;
+      gradeCol: number;
+      date: string | null;
+    };
+    const subs: Sub[] = [];
+
+    for (let i = 0; i < letterCols.length; i++) {
+      const start = letterCols[i].col;
+      const end = i + 1 < letterCols.length ? letterCols[i + 1].col : row.length;
+
+      let penCol = -1, tagCol = -1, sizeCol = -1, gradeCol = -1;
+      for (let c = start; c < end; c++) {
+        const h = String(headerRow[c] ?? '').trim().toLowerCase();
+        if (h === 'pen') penCol = c;
+        else if (h === 'tag' || h === 'id') tagCol = c;
+        else if (h === 'cm' || h === 'size' || h === 'belly_cm') sizeCol = c;
+        else if (h === 'gr' || h === 'grade' || h === 'rating') gradeCol = c;
+      }
+      if (penCol < 0 || tagCol < 0 || sizeCol < 0) continue;
+
+      subs.push({
+        letter: letterCols[i].letter,
+        penCol, tagCol, sizeCol, gradeCol,
+        date: toIsoDate(dateRow[start]),
+      });
+    }
+
+    if (subs.length === 0) continue;
+
+    // Walk data rows until we see a blank pen cell across ALL sub-blocks
+    for (let dr = r + 3; dr < rows.length; dr++) {
+      const drow = rows[dr] ?? [];
+      const allBlank = subs.every(s => {
+        const v = String(drow[s.penCol] ?? '').trim();
+        return v === '';
+      });
+      if (allBlank) break;
+
+      for (const s of subs) {
+        const penCell = String(drow[s.penCol] ?? '').trim();
+        if (!penCell) continue;
+        // Expect e.g. "A1".."A54" — slot is the trailing digits
+        const m = penCell.match(/^([A-Z])\s*(\d+)$/i);
+        if (!m) continue;
+        const slot = parseInt(m[2], 10);
+        if (!slot) continue;
+
+        const tagRaw = drow[s.tagCol];
+        const tag = tagRaw == null ? '' : String(tagRaw).trim();
+        if (!tag) continue;
+
+        const sizeRaw = drow[s.sizeCol];
+        const belly_cm = sizeRaw == null || sizeRaw === '' ? null : (typeof sizeRaw === 'number' ? sizeRaw : parseFloat(String(sizeRaw))) || null;
+
+        const gradeRaw = s.gradeCol >= 0 ? drow[s.gradeCol] : null;
+        const grade = gradeRaw == null || gradeRaw === '' ? null : (typeof gradeRaw === 'number' ? gradeRaw : parseInt(String(gradeRaw), 10)) || null;
+
+        const inspection_date = s.date ?? new Date().toISOString().slice(0, 10);
+        if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
+
+        out.push({
+          pen: penId,
+          line: s.letter,
+          pen_slot: slot,
+          tag,
+          belly_cm,
+          conditions: [],
+          last_inspected: '',
+          cull: '',
+          grade,
+          inspection_date,
+          csvRow: dr + 1,
+        });
+      }
+    }
+
+    // Skip past this block — jump roughly past 54 data rows
+    r = r + 3 + 54;
+  }
+
+  return { rows: out, warnings, maxDate };
+}
+
+function parseFlat(rows: any[][], penIdFallback: string): ParsedInspectionFile {
+  const warnings: string[] = [];
 
   // Row 1: extract inspection date
   let inspectionDate = new Date().toISOString().slice(0, 10);
-  if (allRows.length > 0) {
-    const row0 = allRows[0];
-    // Look for date in second cell or anywhere in first row
-    for (const cell of row0) {
-      const s = String(cell ?? '').trim();
-      // Match YYYY/MM/DD or YYYY-MM-DD
-      const m = s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-      if (m) {
-        inspectionDate = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-        break;
-      }
+  if (rows.length > 0) {
+    for (const cell of rows[0]) {
+      const iso = toIsoDate(cell);
+      if (iso) { inspectionDate = iso; break; }
     }
   }
 
   // Find header row (contains "Pen" and "ID")
   let headerIdx = -1;
-  for (let i = 0; i < Math.min(allRows.length, 10); i++) {
-    const cells = allRows[i].map(c => String(c ?? '').trim().toLowerCase());
-    if (cells.includes('pen') && cells.includes('id')) {
-      headerIdx = i;
-      break;
-    }
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const cells = (rows[i] ?? []).map(c => String(c ?? '').trim().toLowerCase());
+    if (cells.includes('pen') && cells.includes('id')) { headerIdx = i; break; }
   }
-
   if (headerIdx === -1) {
     warnings.push('Could not find header row with "Pen" and "ID" columns');
     return { inspectionDate, rows: [], warnings };
   }
 
-  const headers = allRows[headerIdx].map(c => String(c ?? '').trim().toLowerCase());
+  const headers = (rows[headerIdx] ?? []).map(c => String(c ?? '').trim().toLowerCase());
   const col = (name: string, alts: string[] = []): number => {
-    const keys = [name, ...alts];
-    for (const k of keys) {
+    for (const k of [name, ...alts]) {
       const idx = headers.indexOf(k.toLowerCase());
       if (idx !== -1) return idx;
     }
     return -1;
   };
-
   const penCol = col('pen');
   const idCol = col('id', ['tag', 'tag_id']);
-  const sizeCol = col('size', ['belly_cm', 'size_cm']);
+  const sizeCol = col('size', ['belly_cm', 'size_cm', 'cm']);
   const condCol = col('condition', ['conditions', 'condition_codes', 'defect']);
   const lastCol = col('last inspected', ['last_inspected', 'prev_date']);
   const cullCol = col('cull', ['cull_schedule']);
   const ratingCol = col('rating', ['grade', 'gr']);
-
   if (idCol === -1) warnings.push('Missing "ID" column — cannot match records');
   if (penCol === -1) warnings.push('Missing "Pen" column');
 
-  const dataRows = allRows.slice(headerIdx + 1);
-  const rows: ParsedInspectionRow[] = [];
-
+  const out: ParsedInspectionRow[] = [];
+  const dataRows = rows.slice(headerIdx + 1);
   for (let di = 0; di < dataRows.length; di++) {
-    const r = dataRows[di];
-    const cells = r.map(c => String(c ?? '').trim());
+    const cells = (dataRows[di] ?? []).map(c => String(c ?? '').trim());
     const tag = idCol >= 0 ? cells[idCol] : '';
-    if (!tag) continue; // skip empty rows
-
-    // Parse conditions: split by comma, semicolon, or space-separated codes
+    if (!tag) continue;
     const rawCond = condCol >= 0 ? cells[condCol] : '';
-    const conditions = rawCond
-      ? rawCond.split(/[,;]+/).map(s => s.trim()).filter(Boolean)
-      : [];
-
-    rows.push({
-      pen: penCol >= 0 ? cells[penCol] : '',
+    const conditions = rawCond ? rawCond.split(/[,;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const penRaw = penCol >= 0 ? cells[penCol] : '';
+    // Try to split pen into line+slot if it looks like "A12"
+    const m = penRaw.match(/^([A-Z])\s*(\d+)$/i);
+    const line = m ? m[1].toUpperCase() : '';
+    const pen_slot = m ? parseInt(m[2], 10) : 0;
+    out.push({
+      pen: m ? penIdFallback : (penRaw || penIdFallback),
+      line,
+      pen_slot,
       tag,
       belly_cm: sizeCol >= 0 ? (parseFloat(cells[sizeCol]) || null) : null,
       conditions,
       last_inspected: lastCol >= 0 ? cells[lastCol] : '',
       cull: cullCol >= 0 ? cells[cullCol] : '',
       grade: ratingCol >= 0 ? (parseInt(cells[ratingCol]) || null) : null,
-      csvRow: headerIdx + 2 + di, // 1-based CSV row number
+      inspection_date: inspectionDate,
+      csvRow: headerIdx + 2 + di,
     });
   }
+  if (out.length === 0) warnings.push('No data rows found after headers');
+  return { inspectionDate, rows: out, warnings };
+}
 
-  if (rows.length === 0) warnings.push('No data rows found after headers');
+/**
+ * Auto-detects the file layout:
+ *   - "grid"  → multi-block GH1 style (Pen letters across columns × 54 slots down)
+ *   - "flat"  → original CSV with one row per croc (Pen, ID, size, …)
+ */
+export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
+  const allRows = await readSheet(file);
+  const penId = inferPenIdFromFilename(file.name);
 
-  return { inspectionDate, rows, warnings };
+  if (looksLikeGrid(allRows)) {
+    const { rows, warnings, maxDate } = parseGrid(allRows, penId);
+    const inspectionDate = maxDate ?? new Date().toISOString().slice(0, 10);
+    if (rows.length === 0) warnings.push('Grid layout detected but no data rows parsed');
+    return { inspectionDate, rows, warnings };
+  }
+
+  return parseFlat(allRows, penId);
 }
