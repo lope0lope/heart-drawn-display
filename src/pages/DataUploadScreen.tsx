@@ -80,12 +80,13 @@ export default function DataUploadScreen() {
     try {
       const { inspectionDate, rows } = parsed;
       const tags = rows.map(r => r.tag);
+      const uniqueTags = [...new Set(tags)];
 
       // 1. Fetch existing crocs for these tags + their latest inspection date
       const { data: existingCrocs } = await supabase
         .from('crocs')
         .select('id, tag, inspection_date, cull_schedule')
-        .in('tag', tags);
+        .in('tag', uniqueTags);
       const tagToExisting = new Map(
         (existingCrocs ?? []).map(c => [c.tag, c])
       );
@@ -126,13 +127,28 @@ export default function DataUploadScreen() {
         }
       }
 
-      // 3. Insert new crocs
+      // 3. Insert new crocs. If one duplicate tag exists in a 500-row batch,
+      // Supabase rejects the whole batch; retry row-by-row so valid A–I rows
+      // are not lost because of a small number of duplicate placeholders.
+      let insertedNewCount = 0;
+      let skippedNewCount = 0;
       for (let i = 0; i < newCrocPayloads.length; i += 500) {
         const batch = newCrocPayloads.slice(i, i + 500);
         const { error } = await supabase.from('crocs').insert(batch);
         if (error) {
           warnings++;
           console.error('Insert batch error:', error);
+          for (const payload of batch) {
+            const { error: rowError } = await supabase.from('crocs').insert(payload);
+            if (rowError) {
+              skippedNewCount++;
+              console.error('Insert row error:', { tag: payload.tag, line: payload.line, pen_slot: payload.pen_slot, error: rowError });
+            } else {
+              insertedNewCount++;
+            }
+          }
+        } else {
+          insertedNewCount += batch.length;
         }
       }
 
@@ -149,7 +165,7 @@ export default function DataUploadScreen() {
       const { data: allCrocs } = await supabase
         .from('crocs')
         .select('id, tag')
-        .in('tag', tags);
+        .in('tag', uniqueTags);
       const tagToId = new Map((allCrocs ?? []).map(c => [c.tag, c.id]));
 
       // 6. Replace any existing inspection for the same croc+date,
@@ -264,12 +280,13 @@ export default function DataUploadScreen() {
 
       queryClient.invalidateQueries();
 
-      const newCount = newCrocPayloads.length;
+      const newCount = insertedNewCount;
       const updatedCount = updatesNewer.length;
-      const historyOnly = rows.length - newCount - updatedCount;
+      const historyOnly = rows.length - newCrocPayloads.length - updatedCount;
       toast.success(
         `Imported ${rows.length} inspections for ${inspectionDate} ` +
         `(${newCount} new, ${updatedCount} updated, ${historyOnly} history-only` +
+        `${skippedNewCount > 0 ? `, ${skippedNewCount} duplicate/skipped` : ''}` +
         `${autoCulled > 0 ? `, ${autoCulled} auto-culled` : ''}` +
         `${autoRevived > 0 ? `, ${autoRevived} revived` : ''})` +
         `${warnings > 0 ? ` · ${warnings} warnings` : ''}`
