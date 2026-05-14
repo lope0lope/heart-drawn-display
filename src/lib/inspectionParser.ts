@@ -97,10 +97,14 @@ function looksLikeGrid(rows: any[][]): boolean {
 const BLOCK_LETTER_RE = /^([A-Z])\d*$/i;
 
 const FIXED_GRID_LAYOUTS = [
-  { lineRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // line names at B2/G2/L2/Q2, etc.
-  { lineRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // XLSX can trim blank left margin from the used range
-  { lineRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // XLSX can trim blank top margin from the used range
-  { lineRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] }, // XLSX can trim blank top and left margins from the used range
+  { headerRows: [1, 59, 117, 175], startCols: [1, 6, 11, 16] }, // Pen/Cm/Gr/Tag at B2/G2/L2/Q2, etc.
+  { headerRows: [3, 61, 119, 177], startCols: [1, 6, 11, 16] }, // line name + date above the column headers
+  { headerRows: [2, 60, 118, 176], startCols: [1, 6, 11, 16] }, // date immediately above row-3 style templates
+  { headerRows: [0, 58, 116, 174], startCols: [1, 6, 11, 16] }, // trimmed top margin
+  { headerRows: [1, 59, 117, 175], startCols: [0, 5, 10, 15] }, // trimmed left margin
+  { headerRows: [3, 61, 119, 177], startCols: [0, 5, 10, 15] },
+  { headerRows: [2, 60, 118, 176], startCols: [0, 5, 10, 15] },
+  { headerRows: [0, 58, 116, 174], startCols: [0, 5, 10, 15] },
 ];
 const FIXED_GRID_LINES = 'ABCDEFGHIJKLMN'.split('');
 
