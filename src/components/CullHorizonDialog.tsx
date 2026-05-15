@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { SIZE_BANDS, sizeBandColor, countSizeBands } from '@/lib/crocUtils';
+import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets } from '@/lib/crocUtils';
 import type { CrocRecord } from '@/hooks/useCrocs';
 
 interface Props {
