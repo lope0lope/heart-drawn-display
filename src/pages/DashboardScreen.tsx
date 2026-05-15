@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBandColor, countSizeBands, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
+import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
 import CullHorizonDialog from '@/components/CullHorizonDialog';
 import type { CrocRecord } from '@/hooks/useCrocs';
 
@@ -41,7 +41,7 @@ export default function DashboardScreen() {
   const { occupied, groups } = grouped;
   const gh1Count = occupied.filter(c => c.pen_id === 'GH1').length;
   const gh2Count = occupied.filter(c => c.pen_id === 'GH2').length;
-  const bc = countSizeBands(occupied);
+  const bc = countSizeBuckets(occupied);
   const maxB = Math.max(...bc, 1);
 
   const openDrill = (title: string, crocs: CrocRecord[]) => setDrill({ title, crocs });
@@ -91,13 +91,13 @@ export default function DashboardScreen() {
           <Pill>Live</Pill>
         </div>
         <div className="px-[18px] py-4">
-          {SIZE_BANDS.map((b, i) => (
+          {SIZE_BUCKETS.map((b, i) => (
             <div key={i} className="flex items-center gap-2.5 mb-2">
               <span className="font-mono-ibm text-[10px] text-ct-text3 w-[58px]">{b.range}</span>
               <div className="flex-1 h-[9px] bg-surface-3 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm" style={{ width: `${(bc[i] / maxB) * 100}%`, background: sizeBandColor(i) }} />
+                <div className="h-full rounded-sm" style={{ width: `${(bc[i] / maxB) * 100}%`, background: sizeBucketColor(i) }} />
               </div>
-              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: sizeBandColor(i) }}>{bc[i]}</span>
+              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: sizeBucketColor(i) }}>{bc[i]}</span>
             </div>
           ))}
         </div>
