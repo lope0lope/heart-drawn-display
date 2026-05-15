@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BANDS, sizeBandColor, countSizeBands, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
+import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
 import CullHorizonDialog from '@/components/CullHorizonDialog';
 import type { CrocRecord } from '@/hooks/useCrocs';
 
