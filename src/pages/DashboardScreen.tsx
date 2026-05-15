@@ -91,13 +91,13 @@ export default function DashboardScreen() {
           <Pill>Live</Pill>
         </div>
         <div className="px-[18px] py-4">
-          {SIZE_BANDS.map((b, i) => (
+          {SIZE_BUCKETS.map((b, i) => (
             <div key={i} className="flex items-center gap-2.5 mb-2">
               <span className="font-mono-ibm text-[10px] text-ct-text3 w-[58px]">{b.range}</span>
               <div className="flex-1 h-[9px] bg-surface-3 rounded-sm overflow-hidden">
-                <div className="h-full rounded-sm" style={{ width: `${(bc[i] / maxB) * 100}%`, background: sizeBandColor(i) }} />
+                <div className="h-full rounded-sm" style={{ width: `${(bc[i] / maxB) * 100}%`, background: sizeBucketColor(i) }} />
               </div>
-              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: sizeBandColor(i) }}>{bc[i]}</span>
+              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: sizeBucketColor(i) }}>{bc[i]}</span>
             </div>
           ))}
         </div>
