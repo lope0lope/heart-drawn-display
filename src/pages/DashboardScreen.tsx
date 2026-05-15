@@ -41,7 +41,7 @@ export default function DashboardScreen() {
   const { occupied, groups } = grouped;
   const gh1Count = occupied.filter(c => c.pen_id === 'GH1').length;
   const gh2Count = occupied.filter(c => c.pen_id === 'GH2').length;
-  const bc = countSizeBands(occupied);
+  const bc = countSizeBuckets(occupied);
   const maxB = Math.max(...bc, 1);
 
   const openDrill = (title: string, crocs: CrocRecord[]) => setDrill({ title, crocs });
