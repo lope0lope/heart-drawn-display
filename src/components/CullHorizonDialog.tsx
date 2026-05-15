@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function CullHorizonDialog({ open, onOpenChange, title, crocs }: Props) {
-  const bc = countSizeBands(crocs);
+  const bc = countSizeBuckets(crocs);
   const max = Math.max(...bc, 1);
   const total = crocs.length;
 
