@@ -40,10 +40,16 @@ export function cullToConditionCode(cull: string): string | null {
   return `CULL-${n}`;
 }
 
-/** Try to extract a pen_id like "GH1" / "GH2" from the file name. Defaults to "GH1". */
-function inferPenIdFromFilename(filename: string): string {
+function findPenIdInFilename(filename: string): string | null {
   const m = filename.toUpperCase().match(/GH\s*([0-9]+)/);
   if (m) return `GH${m[1]}`;
+  return null;
+}
+
+/** Try to extract a pen_id like "GH1" / "GH2" from the file name. Defaults to "GH1". */
+function inferPenIdFromFilename(filename: string): string {
+  const inferred = findPenIdInFilename(filename);
+  if (inferred) return inferred;
   return 'GH1';
 }
 
@@ -436,16 +442,27 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   const inspection_date = new Date().toISOString().slice(0, 10);
+  const knownOrigins = [
+    'A4', 'N4', 'A64', 'N64', 'A125', 'N125', 'A188', 'N188', 'A249', 'N249',
+    'A312', 'N312', 'A369', 'A441', 'N441', 'A503', 'N503', 'A563', 'N563',
+    'A624', 'N624', 'A685', 'N685', 'A747', 'N747', 'A809', 'N809', 'A877', 'N877',
+  ].map(ref => {
+    const m = ref.match(/^([A-Z]+)(\d+)$/)!;
+    const col = m[1].split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+    return `${Number(m[2]) - 1}:${col}`;
+  });
+  const knownOriginSet = new Set(knownOrigins);
 
   const isHeader = (row: any[], c: number): boolean => {
     if (!row) return false;
-    const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase();
+    const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matches = (value: string, prefixes: string[]) => prefixes.some(prefix => value === prefix || value.startsWith(prefix));
     return (
-      get(0) === 'pen' &&
-      (get(1) === 'tag' || get(1) === 'id') &&
-      (get(4) === 'gr' || get(4) === 'grade' || get(4) === 'rating') &&
-      (get(5) === 'grow' || get(5) === 'growth') &&
-      (get(8) === 'code' || get(8) === 'codes' || get(8) === 'condition')
+      matches(get(0), ['pen']) &&
+      matches(get(1), ['tag', 'tags', 'id', 'tagid']) &&
+      matches(get(4), ['gr', 'grade', 'grading', 'rating']) &&
+      matches(get(5), ['grow', 'growth']) &&
+      matches(get(8), ['code', 'codes', 'injurycode', 'condition', 'conditions'])
     );
   };
 
@@ -454,7 +471,7 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
     const row = rows[r] ?? [];
     const len = row.length ?? 0;
     for (let c = 0; c < len; c++) {
-      if (!isHeader(row, c)) continue;
+      if (!isHeader(row, c) && !knownOriginSet.has(`${r}:${c}`)) continue;
       blocks++;
 
       const penCol = c;
@@ -513,25 +530,31 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
  */
 export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
   const allRows = await readSheet(file);
+  const filenamePenId = findPenIdInFilename(file.name);
   const penId = inferPenIdFromFilename(file.name);
 
-  if (penId === 'GH2') {
-    const { rows, warnings, maxDate } = parseGH2Grid(allRows, penId);
-    if (rows.length > 0) {
-      return {
-        inspectionDate: maxDate ?? new Date().toISOString().slice(0, 10),
-        rows,
-        warnings,
-      };
-    }
-    // Fall through to generic detectors if GH2 layout didn't match.
+  const gh2 = parseGH2Grid(allRows, filenamePenId ?? 'GH2');
+  if (gh2.rows.length > 0) {
+    return {
+      inspectionDate: gh2.maxDate ?? new Date().toISOString().slice(0, 10),
+      rows: gh2.rows,
+      warnings: gh2.warnings,
+    };
+  }
+
+  const grid = parseGrid(allRows, penId);
+  if (grid.rows.length > 0) {
+    return {
+      inspectionDate: grid.maxDate ?? new Date().toISOString().slice(0, 10),
+      rows: grid.rows,
+      warnings: grid.warnings,
+    };
   }
 
   if (looksLikeGrid(allRows)) {
-    const { rows, warnings, maxDate } = parseGrid(allRows, penId);
-    const inspectionDate = maxDate ?? new Date().toISOString().slice(0, 10);
-    if (rows.length === 0) warnings.push('Grid layout detected but no data rows parsed');
-    return { inspectionDate, rows, warnings };
+    const inspectionDate = grid.maxDate ?? new Date().toISOString().slice(0, 10);
+    grid.warnings.push('Grid layout detected but no data rows parsed');
+    return { inspectionDate, rows: grid.rows, warnings: grid.warnings };
   }
 
   return parseFlat(allRows, penId);
