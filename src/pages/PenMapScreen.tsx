@@ -112,7 +112,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
 
   // Build grid from full pen for layout dims & duplicate counts
   const fullGrid = buildPenGrid(crocs);
-  const { lines, maxSlot, duplicates } = fullGrid;
+  const { lines, maxSlot, duplicates, slotPositions, columnCount } = fullGrid;
   // Rebuild grid from filteredCrocs so condition/size/etc. filters actually
   // surface the matching record at each slot instead of the latest one.
   const { grid } = buildPenGrid(filteredCrocs.length ? filteredCrocs : crocs);
