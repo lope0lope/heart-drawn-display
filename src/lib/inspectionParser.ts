@@ -67,16 +67,24 @@ function toIsoDate(v: any): string | null {
   return null;
 }
 
-async function readSheet(file: File): Promise<any[][]> {
+async function readSheets(file: File): Promise<{ name: string; rows: any[][] }[]> {
   if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as any[][];
+    return wb.SheetNames.map(name => ({
+      name,
+      rows: XLSX.utils.sheet_to_json(wb.Sheets[name], {
+        header: 1,
+        raw: true,
+        defval: '',
+        blankrows: true,
+        range: 0,
+      }) as any[][],
+    }));
   }
   const text = await file.text();
   const result = Papa.parse(text, { header: false, skipEmptyLines: false });
-  return result.data as any[][];
+  return [{ name: file.name, rows: result.data as any[][] }];
 }
 
 /**
