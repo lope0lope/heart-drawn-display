@@ -40,10 +40,16 @@ export function cullToConditionCode(cull: string): string | null {
   return `CULL-${n}`;
 }
 
-/** Try to extract a pen_id like "GH1" / "GH2" from the file name. Defaults to "GH1". */
-function inferPenIdFromFilename(filename: string): string {
+function findPenIdInFilename(filename: string): string | null {
   const m = filename.toUpperCase().match(/GH\s*([0-9]+)/);
   if (m) return `GH${m[1]}`;
+  return null;
+}
+
+/** Try to extract a pen_id like "GH1" / "GH2" from the file name. Defaults to "GH1". */
+function inferPenIdFromFilename(filename: string): string {
+  const inferred = findPenIdInFilename(filename);
+  if (inferred) return inferred;
   return 'GH1';
 }
 
@@ -439,13 +445,13 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
 
   const isHeader = (row: any[], c: number): boolean => {
     if (!row) return false;
-    const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase();
+    const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     return (
       get(0) === 'pen' &&
-      (get(1) === 'tag' || get(1) === 'id') &&
-      (get(4) === 'gr' || get(4) === 'grade' || get(4) === 'rating') &&
+      (get(1) === 'tag' || get(1) === 'tags' || get(1) === 'id' || get(1) === 'tagid') &&
+      (get(4) === 'gr' || get(4) === 'grade' || get(4) === 'grading' || get(4) === 'rating') &&
       (get(5) === 'grow' || get(5) === 'growth') &&
-      (get(8) === 'code' || get(8) === 'codes' || get(8) === 'condition')
+      (get(8) === 'code' || get(8) === 'codes' || get(8) === 'injurycode' || get(8) === 'condition' || get(8) === 'conditions')
     );
   };
 
@@ -513,25 +519,31 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
  */
 export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
   const allRows = await readSheet(file);
+  const filenamePenId = findPenIdInFilename(file.name);
   const penId = inferPenIdFromFilename(file.name);
 
-  if (penId === 'GH2') {
-    const { rows, warnings, maxDate } = parseGH2Grid(allRows, penId);
-    if (rows.length > 0) {
-      return {
-        inspectionDate: maxDate ?? new Date().toISOString().slice(0, 10),
-        rows,
-        warnings,
-      };
-    }
-    // Fall through to generic detectors if GH2 layout didn't match.
+  const gh2 = parseGH2Grid(allRows, filenamePenId ?? 'GH2');
+  if (gh2.rows.length > 0) {
+    return {
+      inspectionDate: gh2.maxDate ?? new Date().toISOString().slice(0, 10),
+      rows: gh2.rows,
+      warnings: gh2.warnings,
+    };
+  }
+
+  const grid = parseGrid(allRows, penId);
+  if (grid.rows.length > 0) {
+    return {
+      inspectionDate: grid.maxDate ?? new Date().toISOString().slice(0, 10),
+      rows: grid.rows,
+      warnings: grid.warnings,
+    };
   }
 
   if (looksLikeGrid(allRows)) {
-    const { rows, warnings, maxDate } = parseGrid(allRows, penId);
-    const inspectionDate = maxDate ?? new Date().toISOString().slice(0, 10);
-    if (rows.length === 0) warnings.push('Grid layout detected but no data rows parsed');
-    return { inspectionDate, rows, warnings };
+    const inspectionDate = grid.maxDate ?? new Date().toISOString().slice(0, 10);
+    grid.warnings.push('Grid layout detected but no data rows parsed');
+    return { inspectionDate, rows: grid.rows, warnings: grid.warnings };
   }
 
   return parseFlat(allRows, penId);
