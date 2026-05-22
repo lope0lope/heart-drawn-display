@@ -544,6 +544,9 @@ function parseFlat(rows: any[][], penIdFallback: string): ParsedInspectionFile {
  *   by scanning every cell for the header pattern, so the file can grow or shrink.
  */
 function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const sequential = parseSequentialBlocks(rows, penId, 'GH2');
+  if (sequential.rows.length > 0) return sequential;
+
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   const inspection_date = new Date().toISOString().slice(0, 10);
