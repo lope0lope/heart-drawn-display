@@ -112,7 +112,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
 
   // Build grid from full pen for layout dims & duplicate counts
   const fullGrid = buildPenGrid(crocs);
-  const { lines, maxSlot, duplicates } = fullGrid;
+  const { lines, maxSlot, duplicates, slotPositions, columnCount } = fullGrid;
   // Rebuild grid from filteredCrocs so condition/size/etc. filters actually
   // surface the matching record at each slot instead of the latest one.
   const { grid } = buildPenGrid(filteredCrocs.length ? filteredCrocs : crocs);
@@ -330,10 +330,11 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             <div className="flex flex-col gap-[2px]">
               {displayLines.map(r => <div key={r} className="font-mono-ibm text-[11px] text-ct-text3 flex items-center justify-end pr-1.5 min-w-[18px] h-[22px]">{r}</div>)}
             </div>
-            <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${maxSlot}, 22px)` }}>
+            <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${Math.max(columnCount, 1)}, 22px)` }}>
               {displayLines.flatMap(line => {
                 const cells = [];
-                for (let s = 1; s <= maxSlot; s++) {
+                for (let i = 0; i < slotPositions.length; i++) {
+                  const s = slotPositions[i];
                   const croc = grid.get(line)?.get(s);
                   const isHighlighted = croc && highlightedIds.has(croc.id);
 
@@ -351,7 +352,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                         key={`${line}-${s}`}
                         className={`w-[22px] h-[22px] rounded-[2px] cursor-pointer transition-transform hover:scale-[1.4] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.2] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
                         style={{ background: bg }}
-                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}-${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}\n\nClick to open profile` })}
+                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}\n\nClick to open profile` })}
                         onMouseLeave={() => setTooltip(null)}
                         onClick={() => {
                           if (onOpenCroc && croc.tag) onOpenCroc(croc.tag);
