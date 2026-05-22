@@ -460,6 +460,12 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
     return `${Number(m[2]) - 1}:${col}`;
   });
   const knownOriginSet = new Set(knownOrigins);
+  const isLikelyOrigin = (r: number, c: number): boolean => {
+    const firstPen = String(rows[r + 1]?.[c] ?? '').trim();
+    const firstTag = String(rows[r + 1]?.[c + 1] ?? '').trim();
+    const secondPen = String(rows[r + 2]?.[c] ?? '').trim();
+    return /^[A-Z]\s*\d+$/i.test(firstPen) && firstTag !== '' && /^[A-Z]\s*\d+$/i.test(secondPen);
+  };
 
   const isHeader = (row: any[], c: number): boolean => {
     if (!row) return false;
@@ -479,7 +485,8 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
     const row = rows[r] ?? [];
     const len = row.length ?? 0;
     for (let c = 0; c < len; c++) {
-      if (!isHeader(row, c) && !knownOriginSet.has(`${r}:${c}`)) continue;
+      const isKnownOrigin = knownOriginSet.has(`${r}:${c}`) && isLikelyOrigin(r, c);
+      if (!isHeader(row, c) && !isKnownOrigin) continue;
       blocks++;
 
       const penCol = c;
