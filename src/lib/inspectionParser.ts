@@ -339,7 +339,10 @@ function parseFixedGridLayout(rows: any[][], penId: string, startCols: number[])
 }
 
 function parseFixedGrid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
-  const attempts = FIXED_GRID_START_COL_SETS.map(startCols => parseFixedGridLayout(rows, penId, startCols));
+  const attempts = [
+    ...FIXED_GRID_START_COL_SETS.map(startCols => parseFixedGridLayout(rows, penId, startCols)),
+    parseSequentialBlocks(rows, penId, 'GH1'),
+  ];
   return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
 }
 
