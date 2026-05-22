@@ -130,7 +130,7 @@ function parseInteger(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const PEN_SLOT_RE = /^([A-Z])\s*(\d+)$/i;
+const PEN_SLOT_RE = /^([A-N])\s*([1-9]\d*)$/i;
 
 function normaliseHeader(v: any): string {
   return String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
