@@ -412,13 +412,13 @@ export default function DataUploadScreen() {
 
             {/* Expected format */}
             <div className="mt-4">
-              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Supported formats</div>
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Expected format</div>
               <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[1.8] bg-surface-2 p-3 rounded-sm border border-border">
-                <strong className="text-ct-accent">Grid layout (e.g. GH1_Sizes_Mar_26.xlsx):</strong> blocks of pen letters (A,B,C…) across columns, with 54 slot rows per block. Pen ID is taken from the file name (GH1 / GH2). Each block carries its own inspection date.<br />
-                <strong className="text-ct-accent">Flat layout:</strong> Row 1 inspection date · Row 3 headers <em>Pen, ID, size, Condition, Last inspected, Cull, Rating</em> · Row 4+ data.
+                Single header row with columns: <strong className="text-ct-accent">House, Pen, Tag, Size, Grading, Date, Condition, Cull</strong>.<br />
+                One row per croc · House = GH1 or GH2 · Pen = line+slot (e.g. A1, B7) · Condition can be a single code, comma-separated codes, or "Cull".
               </div>
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
-                <strong className="text-ct-text2">Cull values:</strong> 1 = now · NXT = next cycle · 2 = 2 cycles · 3 = 3 cycles<br />
+                <strong className="text-ct-text2">Cull values:</strong> 1 = this cycle · NXT = next cycle · 2 / 3 = cycles ahead<br />
                 <strong className="text-ct-text2">Re-upload:</strong> Older inspections append history; newer/equal dates also refresh the croc's "live" fields.
               </div>
             </div>
