@@ -442,16 +442,27 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
   const out: ParsedInspectionRow[] = [];
   const warnings: string[] = [];
   const inspection_date = new Date().toISOString().slice(0, 10);
+  const knownOrigins = [
+    'A4', 'N4', 'A64', 'N64', 'A125', 'N125', 'A188', 'N188', 'A249', 'N249',
+    'A312', 'N312', 'A369', 'A441', 'N441', 'A503', 'N503', 'A563', 'N563',
+    'A624', 'N624', 'A685', 'N685', 'A747', 'N747', 'A809', 'N809', 'A877', 'N877',
+  ].map(ref => {
+    const m = ref.match(/^([A-Z]+)(\d+)$/)!;
+    const col = m[1].split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+    return `${Number(m[2]) - 1}:${col}`;
+  });
+  const knownOriginSet = new Set(knownOrigins);
 
   const isHeader = (row: any[], c: number): boolean => {
     if (!row) return false;
     const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matches = (value: string, prefixes: string[]) => prefixes.some(prefix => value === prefix || value.startsWith(prefix));
     return (
-      get(0) === 'pen' &&
-      (get(1) === 'tag' || get(1) === 'tags' || get(1) === 'id' || get(1) === 'tagid') &&
-      (get(4) === 'gr' || get(4) === 'grade' || get(4) === 'grading' || get(4) === 'rating') &&
-      (get(5) === 'grow' || get(5) === 'growth') &&
-      (get(8) === 'code' || get(8) === 'codes' || get(8) === 'injurycode' || get(8) === 'condition' || get(8) === 'conditions')
+      matches(get(0), ['pen']) &&
+      matches(get(1), ['tag', 'tags', 'id', 'tagid']) &&
+      matches(get(4), ['gr', 'grade', 'grading', 'rating']) &&
+      matches(get(5), ['grow', 'growth']) &&
+      matches(get(8), ['code', 'codes', 'injurycode', 'condition', 'conditions'])
     );
   };
 
@@ -460,7 +471,7 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
     const row = rows[r] ?? [];
     const len = row.length ?? 0;
     for (let c = 0; c < len; c++) {
-      if (!isHeader(row, c)) continue;
+      if (!isHeader(row, c) && !knownOriginSet.has(`${r}:${c}`)) continue;
       blocks++;
 
       const penCol = c;
