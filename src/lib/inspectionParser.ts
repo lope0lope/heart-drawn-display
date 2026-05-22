@@ -130,6 +130,100 @@ function parseInteger(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const PEN_SLOT_RE = /^([A-Z])\s*(\d+)$/i;
+
+function normaliseHeader(v: any): string {
+  return String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isPlausibleBelly(v: any): boolean {
+  const n = parseNumber(v);
+  return n !== null && n >= 10 && n <= 80;
+}
+
+function parseSequentialBlocks(rows: any[][], penId: string, mode: 'GH1' | 'GH2'): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const out: ParsedInspectionRow[] = [];
+  const warnings: string[] = [];
+  let maxDate: string | null = null;
+  const maxRows = mode === 'GH2' ? 56 : 80;
+
+  const inferGH1Cols = (startRow: number, penCol: number) => {
+    const header = rows[startRow - 1] ?? [];
+    const cols = Array.from({ length: 6 }, (_, i) => penCol + 1 + i);
+    let tagCol = -1, sizeCol = -1, gradeCol = -1;
+
+    for (const col of [penCol, ...cols]) {
+      const h = normaliseHeader(header[col]);
+      if (['tag', 'id', 'tagid'].includes(h)) tagCol = col;
+      if (['cm', 'size', 'bellycm', 'measurement', 'measure'].includes(h)) sizeCol = col;
+      if (['gr', 'grade', 'grading', 'rating'].includes(h)) gradeCol = col;
+    }
+
+    if (sizeCol < 0) {
+      sizeCol = cols
+        .map(col => ({ col, score: rows.slice(startRow, startRow + 12).filter(r => isPlausibleBelly(r?.[col])).length }))
+        .sort((a, b) => b.score - a.score)[0]?.col ?? penCol + 2;
+    }
+    if (gradeCol < 0) {
+      gradeCol = cols
+        .filter(col => col !== sizeCol)
+        .map(col => ({ col, score: rows.slice(startRow, startRow + 12).filter(r => { const n = parseInteger(r?.[col]); return n !== null && n >= 0 && n <= 5; }).length }))
+        .sort((a, b) => b.score - a.score)[0]?.col ?? -1;
+    }
+    if (tagCol < 0) {
+      tagCol = cols.find(col => col !== sizeCol && col !== gradeCol && rows.slice(startRow, startRow + 12).some(r => String(r?.[col] ?? '').trim() !== '')) ?? penCol + 1;
+    }
+
+    return { tagCol, sizeCol, gradeCol, codeCol: -1 };
+  };
+
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      const first = String(row[c] ?? '').trim().match(PEN_SLOT_RE);
+      if (!first || String(row[c + 1] ?? '').trim() === '') continue;
+      if (String(rows[r - 1]?.[c] ?? '').trim().match(PEN_SLOT_RE)) continue;
+
+      const cols = mode === 'GH2'
+        ? { tagCol: c + 1, sizeCol: c + 7, gradeCol: c + 4, codeCol: c + 8 }
+        : inferGH1Cols(r, c);
+      const parsedBlock: ParsedInspectionRow[] = [];
+      const inspection_date = findDateNearBlock(rows, r - 1, c) ?? new Date().toISOString().slice(0, 10);
+
+      for (let i = 0; i < maxRows; i++) {
+        const rowIndex = r + i;
+        const drow = rows[rowIndex] ?? [];
+        const m = String(drow[c] ?? '').trim().match(PEN_SLOT_RE);
+        if (!m) break;
+        const tag = String(drow[cols.tagCol] ?? '').trim();
+        if (!tag) continue;
+        const codeRaw = cols.codeCol >= 0 ? drow[cols.codeCol] : '';
+        parsedBlock.push({
+          pen: penId,
+          line: m[1].toUpperCase(),
+          pen_slot: parseInt(m[2], 10),
+          tag,
+          belly_cm: parseNumber(drow[cols.sizeCol]),
+          conditions: codeRaw == null || codeRaw === '' ? [] : String(codeRaw).split(/[,;]+/).map(s => s.trim()).filter(Boolean),
+          last_inspected: '',
+          cull: '',
+          grade: cols.gradeCol >= 0 ? parseInteger(drow[cols.gradeCol]) : null,
+          inspection_date,
+          csvRow: rowIndex + 1,
+        });
+      }
+
+      if (parsedBlock.length >= 2 || (parsedBlock.length === 1 && mode === 'GH1')) {
+        out.push(...parsedBlock);
+        if (!maxDate || inspection_date > maxDate) maxDate = inspection_date;
+      }
+    }
+  }
+
+  if (out.length === 0) warnings.push(`${mode} sequential block scan found no Pen/Tag data rows`);
+  return { rows: out, warnings, maxDate };
+}
+
 function findDateNearBlock(rows: any[][], headerRow: number, startCol: number): string | null {
   for (let r = Math.max(0, headerRow - 3); r < headerRow; r++) {
     for (let c = startCol; c < startCol + 4; c++) {
