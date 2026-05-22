@@ -114,9 +114,10 @@ export function buildPenGrid(crocs: CrocRecord[]) {
     }
   }
 
-  // Compact slot positions: collapse sparse raw slot numbers to a contiguous
-  // column index so A1, A2, A3 (or A1, A16, A31) render adjacently in cols 1..N.
-  const slotPositions = [...new Set(crocs.map(c => c.pen_slot))].sort((a, b) => a - b);
+  // Physical slot positions: a pen label like A16 must render in column 16,
+  // not be collapsed into the 6th occupied slot. This preserves the real farm
+  // map so A1, A2, A3 are adjacent and A10 follows A9, never A1.
+  const slotPositions = Array.from({ length: maxSlot }, (_, i) => i + 1);
 
   return { lines, maxSlot, grid, duplicates, slotPositions, columnCount: slotPositions.length };
 }
