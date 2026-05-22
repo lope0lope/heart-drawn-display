@@ -537,11 +537,32 @@ function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow
  *   - "flat"  → original CSV with one row per croc (Pen, ID, size, …)
  */
 export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
-  const allRows = await readSheet(file);
+  const sheets = await readSheets(file);
   const filenamePenId = findPenIdInFilename(file.name);
   const penId = inferPenIdFromFilename(file.name);
+  const warnings: string[] = [];
 
-  const gh2 = parseGH2Grid(allRows, filenamePenId ?? 'GH2');
+  const parseGridSheets = () => {
+    const attempts = sheets.map(sheet => ({ sheet: sheet.name, ...parseGrid(sheet.rows, penId) }));
+    return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
+  };
+
+  const parseGH2Sheets = () => {
+    const attempts = sheets.map(sheet => ({ sheet: sheet.name, ...parseGH2Grid(sheet.rows, filenamePenId ?? 'GH2') }));
+    return attempts.sort((a, b) => b.rows.length - a.rows.length)[0];
+  };
+
+  const preferGH2 = filenamePenId === 'GH2';
+  const first = preferGH2 ? parseGH2Sheets() : parseGridSheets();
+  if (first.rows.length > 0) {
+    return {
+      inspectionDate: first.maxDate ?? new Date().toISOString().slice(0, 10),
+      rows: first.rows,
+      warnings: first.warnings,
+    };
+  }
+
+  const gh2 = preferGH2 ? first : parseGH2Sheets();
   if (gh2.rows.length > 0) {
     return {
       inspectionDate: gh2.maxDate ?? new Date().toISOString().slice(0, 10),
@@ -550,7 +571,7 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
     };
   }
 
-  const grid = parseGrid(allRows, penId);
+  const grid = preferGH2 ? parseGridSheets() : first;
   if (grid.rows.length > 0) {
     return {
       inspectionDate: grid.maxDate ?? new Date().toISOString().slice(0, 10),
@@ -559,11 +580,14 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
     };
   }
 
-  if (looksLikeGrid(allRows)) {
+  if (sheets.some(sheet => looksLikeGrid(sheet.rows))) {
     const inspectionDate = grid.maxDate ?? new Date().toISOString().slice(0, 10);
     grid.warnings.push('Grid layout detected but no data rows parsed');
     return { inspectionDate, rows: grid.rows, warnings: grid.warnings };
   }
 
-  return parseFlat(allRows, penId);
+  for (const sheet of sheets) warnings.push(...parseFlat(sheet.rows, penId).warnings);
+  const flatAttempts = sheets.map(sheet => parseFlat(sheet.rows, penId)).sort((a, b) => b.rows.length - a.rows.length);
+  const flat = flatAttempts[0];
+  return flat.rows.length > 0 ? flat : { ...flat, warnings: [...new Set(warnings)] };
 }
