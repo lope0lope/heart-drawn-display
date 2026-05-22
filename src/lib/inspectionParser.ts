@@ -425,13 +425,107 @@ function parseFlat(rows: any[][], penIdFallback: string): ParsedInspectionFile {
 }
 
 /**
+ * GH2 layout:
+ *   Repeating rectangular blocks, 9 columns wide × 57 rows tall (1 header + 56 data rows).
+ *   Header row: Pen | Tag | <date measurement cols...> | Gr | Grow | <date measurement cols...> | Code
+ *   We only use: Pen (col+0), Tag (col+1), Gr (col+4), latest belly (col+7, second-to-last), Code (col+8).
+ *   Pen cell contains line letter + slot (e.g. "B1".."B56"). Blocks are auto-detected
+ *   by scanning every cell for the header pattern, so the file can grow or shrink.
+ */
+function parseGH2Grid(rows: any[][], penId: string): { rows: ParsedInspectionRow[]; warnings: string[]; maxDate: string | null } {
+  const out: ParsedInspectionRow[] = [];
+  const warnings: string[] = [];
+  const inspection_date = new Date().toISOString().slice(0, 10);
+
+  const isHeader = (row: any[], c: number): boolean => {
+    if (!row) return false;
+    const get = (off: number) => String(row[c + off] ?? '').trim().toLowerCase();
+    return (
+      get(0) === 'pen' &&
+      (get(1) === 'tag' || get(1) === 'id') &&
+      (get(4) === 'gr' || get(4) === 'grade' || get(4) === 'rating') &&
+      (get(5) === 'grow' || get(5) === 'growth') &&
+      (get(8) === 'code' || get(8) === 'codes' || get(8) === 'condition')
+    );
+  };
+
+  let blocks = 0;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const len = row.length ?? 0;
+    for (let c = 0; c < len; c++) {
+      if (!isHeader(row, c)) continue;
+      blocks++;
+
+      const penCol = c;
+      const tagCol = c + 1;
+      const gradeCol = c + 4;
+      const bellyCol = c + 7;
+      const codeCol = c + 8;
+
+      for (let i = 1; i <= 56; i++) {
+        const dr = rows[r + i];
+        if (!dr) break;
+        const penCell = String(dr[penCol] ?? '').trim();
+        if (!penCell) continue;
+        const m = penCell.match(/^([A-Z])\s*(\d+)$/i);
+        if (!m) continue;
+        const line = m[1].toUpperCase();
+        const slot = parseInt(m[2], 10);
+        if (!slot) continue;
+
+        const tagRaw = dr[tagCol];
+        const tag = tagRaw == null ? '' : String(tagRaw).trim();
+        if (!tag) continue;
+
+        const codeRaw = dr[codeCol];
+        const conditions = codeRaw == null || codeRaw === ''
+          ? []
+          : String(codeRaw).split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+
+        out.push({
+          pen: penId,
+          line,
+          pen_slot: slot,
+          tag,
+          belly_cm: parseNumber(dr[bellyCol]),
+          conditions,
+          last_inspected: '',
+          cull: '',
+          grade: parseInteger(dr[gradeCol]),
+          inspection_date,
+          csvRow: r + i + 1,
+        });
+      }
+    }
+  }
+
+  if (blocks === 0) warnings.push('GH2 layout: no Pen/Tag/Gr/Grow/Code header blocks found');
+  else if (out.length < blocks * 40) warnings.push(`GH2 layout: parsed ${out.length} rows from ${blocks} blocks (expected ~${blocks * 56})`);
+  return { rows: out, warnings, maxDate: inspection_date };
+}
+
+/**
  * Auto-detects the file layout:
+ *   - "GH2"   → repeating 9-col blocks with Pen/Tag/Gr/Grow/Code headers
  *   - "grid"  → multi-block GH1 style (Pen letters across columns × 54 slots down)
  *   - "flat"  → original CSV with one row per croc (Pen, ID, size, …)
  */
 export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
   const allRows = await readSheet(file);
   const penId = inferPenIdFromFilename(file.name);
+
+  if (penId === 'GH2') {
+    const { rows, warnings, maxDate } = parseGH2Grid(allRows, penId);
+    if (rows.length > 0) {
+      return {
+        inspectionDate: maxDate ?? new Date().toISOString().slice(0, 10),
+        rows,
+        warnings,
+      };
+    }
+    // Fall through to generic detectors if GH2 layout didn't match.
+  }
 
   if (looksLikeGrid(allRows)) {
     const { rows, warnings, maxDate } = parseGrid(allRows, penId);
