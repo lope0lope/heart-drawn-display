@@ -114,7 +114,11 @@ export function buildPenGrid(crocs: CrocRecord[]) {
     }
   }
 
-  return { lines, maxSlot, grid, duplicates };
+  // Compact slot positions: collapse sparse raw slot numbers to a contiguous
+  // column index so A1, A2, A3 (or A1, A16, A31) render adjacently in cols 1..N.
+  const slotPositions = [...new Set(crocs.map(c => c.pen_slot))].sort((a, b) => a - b);
+
+  return { lines, maxSlot, grid, duplicates, slotPositions, columnCount: slotPositions.length };
 }
 
 /** Count crocs per size band */
