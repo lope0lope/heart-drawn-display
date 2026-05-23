@@ -22,13 +22,13 @@ export interface ParsedInspectionFile {
   warnings: string[];
 }
 
-/** Normalise cull field to standard codes: 1, NXT, 2, 3, 4 or empty */
+/** Normalise cull field to standard codes: NXT, 1, 2, 3 or empty */
 export function normaliseCull(raw: string): string {
   const v = (raw ?? '').toString().trim().toUpperCase();
   if (v === 'NXT' || v === 'NEXT' || v === 'NX') return 'NXT';
-  if (['1', '2', '3', '4'].includes(v)) return v;
+  if (['1', '2', '3'].includes(v)) return v;
   if (v === '') return '';
-  return v;
+  return '';
 }
 
 /** Build the CULL-x condition code tag from cull field */
@@ -54,6 +54,16 @@ function parseInteger(v: any): number | null {
   return Math.trunc(n);
 }
 
+function parseGrade(v: any): number | null {
+  const n = parseInteger(v);
+  return n === 1 || n === 2 ? n : null;
+}
+
+const MONTHS: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
 function excelSerialToISO(n: number): string | null {
   if (!Number.isFinite(n) || n < 1 || n > 80000) return null;
   // Excel epoch (1899-12-30 to account for 1900 leap-year bug)
@@ -76,6 +86,12 @@ function toIsoDate(v: any): string | null {
   }
   if (typeof v === 'number') return excelSerialToISO(v);
   const s = String(v).trim();
+  const monthYear = s.match(/^([A-Za-z]{3,})[-\s](\d{2,4})$/);
+  if (monthYear) {
+    const mo = MONTHS[monthYear[1].slice(0, 3).toLowerCase()];
+    const yr = monthYear[2].length === 2 ? `20${monthYear[2]}` : monthYear[2];
+    if (mo) return `${yr}-${mo}-01`;
+  }
   // Excel serial as string
   if (/^\d{4,5}(\.\d+)?$/.test(s)) {
     const iso = excelSerialToISO(parseFloat(s));
@@ -138,12 +154,30 @@ function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, numbe
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
+    const exactUnifiedHeader = positionalOrder.every((field, pos) =>
+      pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
+    );
+    if (exactUnifiedHeader) {
+      return {
+        idx: i,
+        cols: Object.fromEntries(positionalOrder.map((field, pos) => [field, pos])),
+      };
+    }
     const matched = wanted.filter(w => keys.some(k => HEADER_ALIASES[w].includes(k))).length;
     if (matched >= 3) {
       const cols: Record<string, number> = {};
       for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
         const idx = keys.findIndex(k => aliases.includes(k));
         cols[field] = idx;
+      }
+      const hasUnifiedPrefix = positionalOrder.slice(0, 4).every((field, pos) =>
+        pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
+      );
+      if (hasUnifiedPrefix) {
+        positionalOrder.forEach((field, pos) => {
+          if (pos < row.length) cols[field] = pos;
+        });
+        return { idx: i, cols };
       }
       // Positional fallback: if a standard field wasn't matched by name but a
       // cell exists at its expected position (not already claimed), use it.
@@ -230,7 +264,7 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
         conditions,
         last_inspected: '',
         cull: normaliseCull(cullVal),
-        grade: cols.grading >= 0 ? parseInteger(row[cols.grading]) : null,
+        grade: cols.grading >= 0 ? parseGrade(row[cols.grading]) : null,
         inspection_date: inspISO,
         csvRow: r + 1,
       });
