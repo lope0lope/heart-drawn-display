@@ -533,7 +533,7 @@ export default function DataUploadScreen() {
                       {rows.slice(0, 15).map((r, i) => (
                         <tr key={i}>
                           <td className="p-[5px_8px] border border-border text-ct-text3 font-mono-ibm text-[10px]">{r.csvRow}</td>
-                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.pen}</td>
+                          <td className="p-[5px_8px] border border-border text-ct-text2 font-mono-ibm">{r.pen} {r.line}{r.pen_slot}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2 font-mono-ibm">{r.tag}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2">{r.belly_cm ?? '—'}</td>
                           <td className="p-[5px_8px] border border-border text-ct-text2">
