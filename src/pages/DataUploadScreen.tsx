@@ -183,19 +183,25 @@ export default function DataUploadScreen() {
         }
       }
 
-      const inspections = rows
-        .filter(r => tagToId.has(r.tag))
-        .map(r => {
-          const condCodes: string[] = [...r.conditions];
-          const cullCode = cullToConditionCode(r.cull);
-          if (cullCode) condCodes.push(cullCode);
-          return {
-            croc_id: tagToId.get(r.tag)!,
-            inspection_date: r.inspection_date || inspectionDate,
-            belly_cm: r.belly_cm,
-            condition_codes: condCodes,
-          };
+      const inspectionMap = new Map<string, any>();
+      for (const r of rows) {
+        const cid = tagToId.get(r.tag);
+        if (!cid) continue;
+        const condCodes: string[] = [...r.conditions];
+        const cullCode = cullToConditionCode(r.cull);
+        if (cullCode) condCodes.push(cullCode);
+        const date = r.inspection_date || inspectionDate;
+        // Last write wins per croc+date so a duplicate row inside the upload
+        // can't trigger a unique-constraint conflict on insert.
+        inspectionMap.set(`${cid}|${date}`, {
+          croc_id: cid,
+          inspection_date: date,
+          belly_cm: r.belly_cm,
+          condition_codes: condCodes,
         });
+      }
+      const inspections = [...inspectionMap.values()];
+
 
       for (let i = 0; i < inspections.length; i += 500) {
         const batch = inspections.slice(i, i + 500);
