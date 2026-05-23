@@ -147,50 +147,22 @@ const HEADER_ALIASES: Record<string, string[]> = {
   cull: ['cull', 'cullschedule', 'cullcycle'],
 };
 
+/** Strict unified layout: House | Pen | Tag | Size | Grading | Date | Condition | Cull.
+ *  Header row must match all 8 columns by alias to avoid latching onto legacy
+ *  template sheets that happen to contain a "Pen"/"Tag" pair. */
 function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, number> } | null {
-  const wanted = ['house', 'pen', 'tag', 'size'];
-  // Standard positional order: House | Pen | Tag | Size | Grading | Date | Condition | Cull
   const positionalOrder = ['house', 'pen', 'tag', 'size', 'grading', 'date', 'condition', 'cull'];
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
-    const exactUnifiedHeader = positionalOrder.every((field, pos) =>
+    const matches = positionalOrder.every((field, pos) =>
       pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
     );
-    if (exactUnifiedHeader) {
+    if (matches) {
       return {
         idx: i,
         cols: Object.fromEntries(positionalOrder.map((field, pos) => [field, pos])),
       };
-    }
-    const matched = wanted.filter(w => keys.some(k => HEADER_ALIASES[w].includes(k))).length;
-    if (matched >= 3) {
-      const cols: Record<string, number> = {};
-      for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
-        const idx = keys.findIndex(k => aliases.includes(k));
-        cols[field] = idx;
-      }
-      const hasUnifiedPrefix = positionalOrder.slice(0, 4).every((field, pos) =>
-        pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
-      );
-      if (hasUnifiedPrefix) {
-        positionalOrder.forEach((field, pos) => {
-          if (pos < row.length) cols[field] = pos;
-        });
-        return { idx: i, cols };
-      }
-      // Positional fallback: if a standard field wasn't matched by name but a
-      // cell exists at its expected position (not already claimed), use it.
-      // Rescues sheets with non-standard labels and prevents Size from being
-      // empty or Cull/Grading from appearing swapped.
-      const used = new Set(Object.values(cols).filter(v => v >= 0));
-      positionalOrder.forEach((field, pos) => {
-        if (cols[field] < 0 && pos < row.length && !used.has(pos)) {
-          cols[field] = pos;
-          used.add(pos);
-        }
-      });
-      return { idx: i, cols };
     }
   }
   return null;
@@ -214,40 +186,60 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
   let maxDate: string | null = null;
   let parsedSheet = false;
 
+  const seenRowKeys = new Set<string>();
+  let duplicateRows = 0;
+  let invalidHouse = 0;
+  let invalidPen = 0;
+  let parsedSheetName: string | null = null;
+
   for (const sheet of sheets) {
     const found = findHeaderRow(sheet.rows);
     if (!found) continue;
+    // Only parse the first sheet that matches the strict unified header.
+    // Prevents legacy template sheets in the same workbook from inflating counts.
+    if (parsedSheet) {
+      warnings.push(`Sheet "${sheet.name}" skipped — only the first unified data sheet ("${parsedSheetName}") is imported.`);
+      continue;
+    }
     parsedSheet = true;
+    parsedSheetName = sheet.name;
     const { idx, cols } = found;
 
     for (let r = idx + 1; r < sheet.rows.length; r++) {
       const row = sheet.rows[r] ?? [];
-      const tagRaw = cols.tag >= 0 ? row[cols.tag] : '';
+      const tagRaw = row[cols.tag];
       const tag = tagRaw == null ? '' : String(tagRaw).trim();
       if (!tag) continue;
 
-      const houseRaw = cols.house >= 0 ? String(row[cols.house] ?? '').trim().toUpperCase() : '';
-      const house = houseRaw || 'GH1';
-
-      const penRaw = cols.pen >= 0 ? String(row[cols.pen] ?? '').trim() : '';
-      const ps = splitPenCell(penRaw);
-      if (!ps) {
-        warnings.push(`Row ${r + 1}: invalid Pen cell "${penRaw}" — expected e.g. "A1"`);
+      const house = String(row[cols.house] ?? '').trim().toUpperCase();
+      if (house !== 'GH1' && house !== 'GH2') {
+        invalidHouse++;
+        if (invalidHouse <= 5) {
+          warnings.push(`Row ${r + 1}: invalid House "${row[cols.house]}" — must be GH1 or GH2`);
+        }
         continue;
       }
 
-      const inspISO = (cols.date >= 0 ? toIsoDate(row[cols.date]) : null) ?? todayIso;
+      const penRaw = String(row[cols.pen] ?? '').trim();
+      const ps = splitPenCell(penRaw);
+      if (!ps) {
+        invalidPen++;
+        if (invalidPen <= 5) {
+          warnings.push(`Row ${r + 1}: invalid Pen cell "${penRaw}" — expected e.g. "A1"`);
+        }
+        continue;
+      }
+
+      const inspISO = toIsoDate(row[cols.date]) ?? todayIso;
       if (!maxDate || inspISO > maxDate) maxDate = inspISO;
 
-      // Condition: may be a number, comma-separated numbers, "Cull", or codes like "RTail"
-      let cullVal = cols.cull >= 0 ? String(row[cols.cull] ?? '').trim() : '';
-      const condRaw = cols.condition >= 0 ? row[cols.condition] : '';
-      let conditions: string[] = [];
+      let cullVal = String(row[cols.cull] ?? '').trim();
+      const condRaw = row[cols.condition];
+      const conditions: string[] = [];
       if (condRaw != null && condRaw !== '') {
         const parts = String(condRaw).split(/[,;]+/).map(s => s.trim()).filter(Boolean);
         for (const p of parts) {
           if (/^cull$/i.test(p)) {
-            // "Cull" in condition column = immediate cull
             if (!cullVal) cullVal = '1';
           } else {
             conditions.push(p);
@@ -255,27 +247,40 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
         }
       }
 
+      // Dedupe by inspection identity: house + pen + tag + date
+      const dedupeKey = `${house}|${ps.line}${ps.slot}|${tag}|${inspISO}`;
+      if (seenRowKeys.has(dedupeKey)) {
+        duplicateRows++;
+        continue;
+      }
+      seenRowKeys.add(dedupeKey);
+
       all.push({
         pen: house,
         line: ps.line,
         pen_slot: ps.slot,
         tag,
-        belly_cm: cols.size >= 0 ? parseNumber(row[cols.size]) : null,
+        belly_cm: parseNumber(row[cols.size]),
         conditions,
         last_inspected: '',
         cull: normaliseCull(cullVal),
-        grade: cols.grading >= 0 ? parseGrade(row[cols.grading]) : null,
+        grade: parseGrade(row[cols.grading]),
         inspection_date: inspISO,
         csvRow: r + 1,
       });
     }
   }
 
+  if (invalidHouse > 5) warnings.push(`…and ${invalidHouse - 5} more rows with invalid House`);
+  if (invalidPen > 5) warnings.push(`…and ${invalidPen - 5} more rows with invalid Pen`);
+  if (duplicateRows > 0) warnings.push(`${duplicateRows} duplicate row(s) skipped (same House+Pen+Tag+Date)`);
+
   if (!parsedSheet) {
     warnings.push('Could not find header row. Expected columns: House, Pen, Tag, Size, Grading, Date, Condition, Cull');
   } else if (all.length === 0) {
     warnings.push('Header row found but no data rows parsed');
   }
+
 
   return {
     inspectionDate: maxDate ?? todayIso,
