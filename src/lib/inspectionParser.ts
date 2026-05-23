@@ -147,50 +147,22 @@ const HEADER_ALIASES: Record<string, string[]> = {
   cull: ['cull', 'cullschedule', 'cullcycle'],
 };
 
+/** Strict unified layout: House | Pen | Tag | Size | Grading | Date | Condition | Cull.
+ *  Header row must match all 8 columns by alias to avoid latching onto legacy
+ *  template sheets that happen to contain a "Pen"/"Tag" pair. */
 function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, number> } | null {
-  const wanted = ['house', 'pen', 'tag', 'size'];
-  // Standard positional order: House | Pen | Tag | Size | Grading | Date | Condition | Cull
   const positionalOrder = ['house', 'pen', 'tag', 'size', 'grading', 'date', 'condition', 'cull'];
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
-    const exactUnifiedHeader = positionalOrder.every((field, pos) =>
+    const matches = positionalOrder.every((field, pos) =>
       pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
     );
-    if (exactUnifiedHeader) {
+    if (matches) {
       return {
         idx: i,
         cols: Object.fromEntries(positionalOrder.map((field, pos) => [field, pos])),
       };
-    }
-    const matched = wanted.filter(w => keys.some(k => HEADER_ALIASES[w].includes(k))).length;
-    if (matched >= 3) {
-      const cols: Record<string, number> = {};
-      for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
-        const idx = keys.findIndex(k => aliases.includes(k));
-        cols[field] = idx;
-      }
-      const hasUnifiedPrefix = positionalOrder.slice(0, 4).every((field, pos) =>
-        pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
-      );
-      if (hasUnifiedPrefix) {
-        positionalOrder.forEach((field, pos) => {
-          if (pos < row.length) cols[field] = pos;
-        });
-        return { idx: i, cols };
-      }
-      // Positional fallback: if a standard field wasn't matched by name but a
-      // cell exists at its expected position (not already claimed), use it.
-      // Rescues sheets with non-standard labels and prevents Size from being
-      // empty or Cull/Grading from appearing swapped.
-      const used = new Set(Object.values(cols).filter(v => v >= 0));
-      positionalOrder.forEach((field, pos) => {
-        if (cols[field] < 0 && pos < row.length && !used.has(pos)) {
-          cols[field] = pos;
-          used.add(pos);
-        }
-      });
-      return { idx: i, cols };
     }
   }
   return null;
