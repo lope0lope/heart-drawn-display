@@ -59,6 +59,11 @@ function parseGrade(v: any): number | null {
   return n === 1 || n === 2 ? n : null;
 }
 
+const MONTHS: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
 function excelSerialToISO(n: number): string | null {
   if (!Number.isFinite(n) || n < 1 || n > 80000) return null;
   // Excel epoch (1899-12-30 to account for 1900 leap-year bug)
@@ -81,6 +86,12 @@ function toIsoDate(v: any): string | null {
   }
   if (typeof v === 'number') return excelSerialToISO(v);
   const s = String(v).trim();
+  const monthYear = s.match(/^([A-Za-z]{3,})[-\s](\d{2,4})$/);
+  if (monthYear) {
+    const mo = MONTHS[monthYear[1].slice(0, 3).toLowerCase()];
+    const yr = monthYear[2].length === 2 ? `20${monthYear[2]}` : monthYear[2];
+    if (mo) return `${yr}-${mo}-01`;
+  }
   // Excel serial as string
   if (/^\d{4,5}(\.\d+)?$/.test(s)) {
     const iso = excelSerialToISO(parseFloat(s));
