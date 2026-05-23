@@ -143,12 +143,30 @@ function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, numbe
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
+    const exactUnifiedHeader = positionalOrder.every((field, pos) =>
+      pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
+    );
+    if (exactUnifiedHeader) {
+      return {
+        idx: i,
+        cols: Object.fromEntries(positionalOrder.map((field, pos) => [field, pos])),
+      };
+    }
     const matched = wanted.filter(w => keys.some(k => HEADER_ALIASES[w].includes(k))).length;
     if (matched >= 3) {
       const cols: Record<string, number> = {};
       for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
         const idx = keys.findIndex(k => aliases.includes(k));
         cols[field] = idx;
+      }
+      const hasUnifiedPrefix = positionalOrder.slice(0, 4).every((field, pos) =>
+        pos < keys.length && HEADER_ALIASES[field].includes(keys[pos])
+      );
+      if (hasUnifiedPrefix) {
+        positionalOrder.forEach((field, pos) => {
+          if (pos < row.length) cols[field] = pos;
+        });
+        return { idx: i, cols };
       }
       // Positional fallback: if a standard field wasn't matched by name but a
       // cell exists at its expected position (not already claimed), use it.
