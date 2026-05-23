@@ -22,13 +22,13 @@ export interface ParsedInspectionFile {
   warnings: string[];
 }
 
-/** Normalise cull field to standard codes: 1, NXT, 2, 3, 4 or empty */
+/** Normalise cull field to standard codes: NXT, 1, 2, 3 or empty */
 export function normaliseCull(raw: string): string {
   const v = (raw ?? '').toString().trim().toUpperCase();
   if (v === 'NXT' || v === 'NEXT' || v === 'NX') return 'NXT';
-  if (['1', '2', '3', '4'].includes(v)) return v;
+  if (['1', '2', '3'].includes(v)) return v;
   if (v === '') return '';
-  return v;
+  return '';
 }
 
 /** Build the CULL-x condition code tag from cull field */
@@ -52,6 +52,11 @@ function parseInteger(v: any): number | null {
   const n = parseNumber(v);
   if (n === null) return null;
   return Math.trunc(n);
+}
+
+function parseGrade(v: any): number | null {
+  const n = parseInteger(v);
+  return n === 1 || n === 2 ? n : null;
 }
 
 function excelSerialToISO(n: number): string | null {
