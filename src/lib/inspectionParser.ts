@@ -253,7 +253,7 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
         conditions,
         last_inspected: '',
         cull: normaliseCull(cullVal),
-        grade: cols.grading >= 0 ? parseInteger(row[cols.grading]) : null,
+        grade: cols.grading >= 0 ? parseGrade(row[cols.grading]) : null,
         inspection_date: inspISO,
         csvRow: r + 1,
       });
