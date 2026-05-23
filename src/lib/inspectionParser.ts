@@ -133,6 +133,8 @@ const HEADER_ALIASES: Record<string, string[]> = {
 
 function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, number> } | null {
   const wanted = ['house', 'pen', 'tag', 'size'];
+  // Standard positional order: House | Pen | Tag | Size | Grading | Date | Condition | Cull
+  const positionalOrder = ['house', 'pen', 'tag', 'size', 'grading', 'date', 'condition', 'cull'];
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
@@ -143,6 +145,17 @@ function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, numbe
         const idx = keys.findIndex(k => aliases.includes(k));
         cols[field] = idx;
       }
+      // Positional fallback: if a standard field wasn't matched by name but a
+      // cell exists at its expected position (not already claimed), use it.
+      // Rescues sheets with non-standard labels and prevents Size from being
+      // empty or Cull/Grading from appearing swapped.
+      const used = new Set(Object.values(cols).filter(v => v >= 0));
+      positionalOrder.forEach((field, pos) => {
+        if (cols[field] < 0 && pos < row.length && !used.has(pos)) {
+          cols[field] = pos;
+          used.add(pos);
+        }
+      });
       return { idx: i, cols };
     }
   }
