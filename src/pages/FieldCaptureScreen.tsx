@@ -1,0 +1,393 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useConditionCodes } from '@/hooks/useCrocs';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X } from 'lucide-react';
+import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
+
+const STORAGE_KEY = 'croctrack.field-capture.pending.v1';
+
+const HOUSES = ['GH1', 'GH2'] as const;
+const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
+const CULL_OPTS = ['', 'NXT', '1', '2', '3'] as const;
+const GRADES = ['', '1', '2'] as const;
+
+interface Entry {
+  id: string;
+  house: 'GH1' | 'GH2';
+  line: string;
+  slot: string;
+  tag: string;
+  size: string;
+  grade: string;
+  date: string; // yyyy-mm-dd
+  conditions: string[];
+  cull: string;
+  createdAt: number;
+}
+
+function newEntry(prev?: Partial<Entry>): Entry {
+  return {
+    id: crypto.randomUUID(),
+    house: (prev?.house as any) ?? 'GH1',
+    line: prev?.line ?? 'A',
+    slot: '',
+    tag: '',
+    size: '',
+    grade: '',
+    date: prev?.date ?? new Date().toISOString().slice(0, 10),
+    conditions: [],
+    cull: '',
+    createdAt: Date.now(),
+  };
+}
+
+function loadPending(): Entry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch { return []; }
+}
+
+function savePending(list: Entry[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+export default function FieldCaptureScreen() {
+  const { data: conditionCodes = [] } = useConditionCodes();
+  const queryClient = useQueryClient();
+
+  const [draft, setDraft] = useState<Entry>(() => newEntry());
+  const [pending, setPending] = useState<Entry[]>(() => loadPending());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
+
+  useEffect(() => { savePending(pending); }, [pending]);
+
+  const isValid = useMemo(() => {
+    const slotN = parseInt(draft.slot, 10);
+    return draft.house && draft.line && Number.isFinite(slotN) && slotN >= 1
+      && draft.tag.trim().length > 0 && draft.date;
+  }, [draft]);
+
+  const toggleCondition = (code: string) => {
+    setDraft(d => ({
+      ...d,
+      conditions: d.conditions.includes(code)
+        ? d.conditions.filter(c => c !== code)
+        : [...d.conditions, code],
+    }));
+  };
+
+  const saveDraft = useCallback(() => {
+    if (!isValid) {
+      toast.error('Fill in House, Line, Slot, Tag and Date first.');
+      return;
+    }
+    if (editingId) {
+      setPending(p => p.map(e => e.id === editingId ? { ...draft, id: editingId } : e));
+      toast.success('Entry updated');
+      setEditingId(null);
+    } else {
+      setPending(p => [...p, { ...draft, id: crypto.randomUUID() }]);
+      toast.success(`Saved ${draft.tag} to pending queue`);
+    }
+    // Prefill next entry with same house/line/date for fast farm-walk capture
+    setDraft(newEntry({ house: draft.house, line: draft.line, date: draft.date }));
+  }, [draft, editingId, isValid]);
+
+  const editEntry = (e: Entry) => {
+    setDraft({ ...e });
+    setEditingId(e.id);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft(newEntry({ house: draft.house, line: draft.line, date: draft.date }));
+  };
+
+  const removeEntry = (id: string) => {
+    setPending(p => p.filter(e => e.id !== id));
+    if (editingId === id) cancelEdit();
+  };
+
+  const clearAll = () => {
+    if (!confirm('Discard all pending entries?')) return;
+    setPending([]);
+    cancelEdit();
+  };
+
+  const commitAll = useCallback(async () => {
+    if (!pending.length) return;
+    setCommitting(true);
+    let inserted = 0, updated = 0, inspections = 0, failed = 0;
+
+    try {
+      const tags = [...new Set(pending.map(p => p.tag.trim()))];
+      const { data: existing } = await supabase
+        .from('crocs')
+        .select('id, tag, inspection_date')
+        .in('tag', tags);
+      const tagToId = new Map((existing ?? []).map(c => [c.tag, c] as const));
+
+      for (const e of pending) {
+        const slotN = parseInt(e.slot, 10);
+        const condCodes = [...e.conditions];
+        const cullCode = cullToConditionCode(e.cull);
+        if (cullCode) condCodes.push(cullCode);
+
+        const live = {
+          tag: e.tag.trim(),
+          pen_id: e.house,
+          line: e.line,
+          pen_slot: slotN,
+          belly_cm: e.size ? parseFloat(e.size) : null,
+          grade: e.grade ? parseInt(e.grade, 10) : null,
+          condition_codes: condCodes,
+          inspection_date: e.date,
+          cull_schedule: normaliseCull(e.cull) || null,
+        };
+
+        const ex = tagToId.get(e.tag.trim());
+        let crocId: number | undefined = ex?.id;
+
+        if (!ex) {
+          const { data, error } = await supabase.from('crocs').insert(live).select('id').single();
+          if (error) { failed++; console.error(error); continue; }
+          crocId = data.id;
+          inserted++;
+        } else {
+          if ((ex.inspection_date ?? '') <= e.date) {
+            const { error } = await supabase.from('crocs').update(live).eq('id', ex.id);
+            if (error) { failed++; console.error(error); continue; }
+            updated++;
+          }
+        }
+
+        if (crocId) {
+          await supabase.from('inspections').delete()
+            .eq('croc_id', crocId).eq('inspection_date', e.date);
+          const { error } = await supabase.from('inspections').insert({
+            croc_id: crocId,
+            inspection_date: e.date,
+            belly_cm: live.belly_cm,
+            condition_codes: condCodes,
+          });
+          if (error) { failed++; console.error(error); }
+          else inspections++;
+        }
+      }
+
+      queryClient.invalidateQueries();
+      toast.success(`Committed: ${inserted} new · ${updated} updated · ${inspections} inspections${failed ? ` · ${failed} failed` : ''}`);
+      if (failed === 0) setPending([]);
+    } catch (err: any) {
+      toast.error(`Commit failed: ${err.message ?? err}`);
+    } finally {
+      setCommitting(false);
+    }
+  }, [pending, queryClient]);
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-5">
+      {/* Draft form */}
+      <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-xl sm:text-2xl text-ct-accent tracking-wider">
+              {editingId ? 'Edit Entry' : 'New Field Entry'}
+            </h2>
+            <p className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mt-1">
+              Capture one crocodile at a time · saved locally until committed
+            </p>
+          </div>
+          {editingId && (
+            <button onClick={cancelEdit} className="text-ct-text3 hover:text-ct-text p-2 active:scale-95" aria-label="Cancel edit">
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <Field label="House">
+            <SelectBig value={draft.house} onChange={v => setDraft(d => ({ ...d, house: v as any }))}
+              options={HOUSES.map(h => ({ value: h, label: h }))} />
+          </Field>
+          <Field label="Line">
+            <SelectBig value={draft.line} onChange={v => setDraft(d => ({ ...d, line: v }))}
+              options={LINES.map(l => ({ value: l, label: l }))} />
+          </Field>
+          <Field label="Slot">
+            <InputBig type="number" inputMode="numeric" min="1" value={draft.slot}
+              onChange={v => setDraft(d => ({ ...d, slot: v }))} placeholder="e.g. 12" />
+          </Field>
+          <Field label="Tag">
+            <InputBig value={draft.tag} onChange={v => setDraft(d => ({ ...d, tag: v }))}
+              placeholder="Tag ID" />
+          </Field>
+          <Field label="Size (cm)">
+            <InputBig type="number" inputMode="decimal" step="0.1" value={draft.size}
+              onChange={v => setDraft(d => ({ ...d, size: v }))} placeholder="e.g. 34" />
+          </Field>
+          <Field label="Grading">
+            <SelectBig value={draft.grade} onChange={v => setDraft(d => ({ ...d, grade: v }))}
+              options={GRADES.map(g => ({ value: g, label: g || '—' }))} />
+          </Field>
+          <Field label="Cull">
+            <SelectBig value={draft.cull} onChange={v => setDraft(d => ({ ...d, cull: v }))}
+              options={CULL_OPTS.map(c => ({ value: c, label: c || 'None' }))} />
+          </Field>
+          <Field label="Date">
+            <InputBig type="date" value={draft.date} onChange={v => setDraft(d => ({ ...d, date: v }))} />
+          </Field>
+        </div>
+
+        <div className="mt-5">
+          <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-2">Conditions</div>
+          <div className="flex flex-wrap gap-2">
+            {conditionCodes.length === 0 && (
+              <span className="text-ct-text3 text-xs">Loading condition codes…</span>
+            )}
+            {conditionCodes.map(c => {
+              const active = draft.conditions.includes(c.code);
+              return (
+                <button
+                  key={c.code}
+                  onClick={() => toggleCondition(c.code)}
+                  className={`px-3 py-2 rounded-sm text-xs font-mono-ibm border transition-all active:scale-95 ${
+                    active
+                      ? 'bg-ct-accent text-background border-ct-accent'
+                      : 'bg-surface-2 text-ct-text2 border-border hover:border-ct-accent hover:text-ct-text'
+                  }`}
+                >
+                  {c.code} · {c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={saveDraft}
+            disabled={!isValid}
+            className="flex-1 flex items-center justify-center gap-2 bg-ct-accent text-background font-mono-ibm text-sm font-semibold tracking-[1.5px] uppercase py-4 rounded-sm hover:bg-ct-accent2 active:scale-[.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {editingId ? <Save className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {editingId ? 'Update Entry' : 'Save Entry'}
+          </button>
+        </div>
+      </div>
+
+      {/* Pending queue */}
+      <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-display text-lg sm:text-xl text-ct-text tracking-wider">
+              Pending Queue
+              <span className="ml-2 text-ct-accent">({pending.length})</span>
+            </h2>
+            <p className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mt-1">
+              Stored locally on this device
+            </p>
+          </div>
+          {pending.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="text-xs font-mono-ibm text-ct-danger hover:underline uppercase tracking-wider"
+            >
+              Discard All
+            </button>
+          )}
+        </div>
+
+        {pending.length === 0 ? (
+          <div className="text-center py-10 text-ct-text3 font-mono-ibm text-xs uppercase tracking-[2px]">
+            No entries queued
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {pending.map(e => (
+              <div key={e.id} className={`flex items-center gap-3 p-3 rounded-sm border ${
+                editingId === e.id ? 'border-ct-accent bg-surface-2' : 'border-border bg-surface-2/50'
+              }`}>
+                <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono-ibm">
+                  <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>
+                  <div><span className="text-ct-text3">Tag </span><span className="text-ct-text">{e.tag}</span></div>
+                  <div><span className="text-ct-text3">Size </span><span className="text-ct-text">{e.size || '—'} cm</span></div>
+                  <div><span className="text-ct-text3">Gr </span><span className="text-ct-text">{e.grade || '—'}</span></div>
+                  <div><span className="text-ct-text3">Cull </span><span className="text-ct-text">{e.cull || '—'}</span></div>
+                  <div className="truncate"><span className="text-ct-text3">Cond </span><span className="text-ct-text">{e.conditions.join(', ') || '—'}</span></div>
+                </div>
+                <button onClick={() => editEntry(e)} className="p-2 text-ct-text2 hover:text-ct-accent active:scale-95" aria-label="Edit">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => removeEntry(e.id)} className="p-2 text-ct-text2 hover:text-ct-danger active:scale-95" aria-label="Delete">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={commitAll}
+          disabled={!pending.length || committing}
+          className="mt-5 w-full flex items-center justify-center gap-2 bg-ct-good text-background font-mono-ibm text-sm font-semibold tracking-[1.5px] uppercase py-4 rounded-sm hover:opacity-90 active:scale-[.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <CloudUpload className="w-4 h-4" />
+          {committing ? 'Committing…' : `Commit ${pending.length} to Dataset`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* --- inputs (large touch targets for tablet use) --- */
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function InputBig(props: {
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  inputMode?: any;
+  step?: string;
+  min?: string;
+}) {
+  return (
+    <input
+      {...props}
+      onChange={e => props.onChange(e.target.value)}
+      className="bg-surface-2 border border-border text-ct-text px-3 py-3 rounded-sm font-mono-ibm text-sm outline-none focus:border-ct-accent"
+    />
+  );
+}
+
+function SelectBig({ value, onChange, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="bg-surface-2 border border-border text-ct-text px-3 py-3 rounded-sm font-mono-ibm text-sm outline-none focus:border-ct-accent"
+    >
+      {options.map(o => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}
