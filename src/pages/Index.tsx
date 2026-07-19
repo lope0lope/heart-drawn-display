@@ -10,6 +10,7 @@ import DataUploadScreen from './DataUploadScreen';
 import CrocProfileScreen from './CrocProfileScreen';
 import AnalyticsScreen from './AnalyticsScreen';
 import ConditionCodesScreen from './ConditionCodesScreen';
+import FieldCaptureScreen from './FieldCaptureScreen';
 
 const SCREENS: Record<ScreenName, React.ComponentType<any>> = {
   dashboard: DashboardScreen,
@@ -17,6 +18,7 @@ const SCREENS: Record<ScreenName, React.ComponentType<any>> = {
   forecast: ForecastScreen,
   feed: FeedReportsScreen,
   upload: DataUploadScreen,
+  capture: FieldCaptureScreen,
   croc: CrocProfileScreen,
   analytics: AnalyticsScreen,
   codes: ConditionCodesScreen,
