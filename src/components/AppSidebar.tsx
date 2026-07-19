@@ -13,7 +13,6 @@ const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: s
   { section: 'Operations', id: 'dashboard', icon: '◻', label: 'Dashboard' },
   { id: 'penmap', icon: '⊞', label: 'Pen Map' },
   { section: 'Records', id: 'upload', icon: '↑', label: 'Data Upload' },
-  { id: 'capture', icon: '✎', label: 'Field Capture' },
   { id: 'croc', icon: '◇', label: 'Croc Profiles' },
 ];
 
