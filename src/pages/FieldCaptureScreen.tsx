@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useConditionCodes } from '@/hooks/useCrocs';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera } from 'lucide-react';
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
+import CrocConditionMap from '@/components/CrocConditionMap';
+import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
+import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
+import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 
-const STORAGE_KEY = 'croctrack.field-capture.pending.v1';
+const STORAGE_KEY = 'croctrack.field-capture.pending.v2';
 
 const HOUSES = ['GH1', 'GH2'] as const;
 const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
@@ -22,7 +26,8 @@ interface Entry {
   size: string;
   grade: string;
   date: string; // yyyy-mm-dd
-  conditions: string[];
+  marks: ConditionMark[];
+  photo: string; // compressed jpeg data URL (required)
   cull: string;
   createdAt: number;
 }
@@ -37,7 +42,8 @@ function newEntry(prev?: Partial<Entry>): Entry {
     size: '',
     grade: '',
     date: prev?.date ?? new Date().toISOString().slice(0, 10),
-    conditions: [],
+    marks: [],
+    photo: '',
     cull: '',
     createdAt: Date.now(),
   };
@@ -52,7 +58,11 @@ function loadPending(): Entry[] {
 }
 
 function savePending(list: Entry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    toast.error('Device storage is full — commit the queue to free space.');
+  }
 }
 
 export default function FieldCaptureScreen() {
@@ -63,25 +73,31 @@ export default function FieldCaptureScreen() {
   const [pending, setPending] = useState<Entry[]>(() => loadPending());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { savePending(pending); }, [pending]);
 
   const isValid = useMemo(() => {
     const slotN = parseInt(draft.slot, 10);
     return draft.house && draft.line && Number.isFinite(slotN) && slotN >= 1
-      && draft.tag.trim().length > 0 && draft.date;
+      && draft.tag.trim().length > 0 && draft.date && !!draft.photo;
   }, [draft]);
 
-  const toggleCondition = (code: string) => {
-    setDraft(d => ({
-      ...d,
-      conditions: d.conditions.includes(code)
-        ? d.conditions.filter(c => c !== code)
-        : [...d.conditions, code],
-    }));
+  const onPickPhoto = async (file?: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToCompressedDataUrl(file);
+      setDraft(d => ({ ...d, photo: dataUrl }));
+    } catch (err: any) {
+      toast.error(err.message ?? 'Could not process that photo');
+    }
   };
 
   const saveDraft = useCallback(() => {
+    if (!draft.photo) {
+      toast.error('A photo is required for every entry.');
+      return;
+    }
     if (!isValid) {
       toast.error('Fill in House, Line, Slot, Tag and Date first.');
       return;
@@ -122,7 +138,8 @@ export default function FieldCaptureScreen() {
   const commitAll = useCallback(async () => {
     if (!pending.length) return;
     setCommitting(true);
-    let inserted = 0, updated = 0, inspections = 0, failed = 0;
+    let inserted = 0, updated = 0, inspections = 0, photos = 0, failed = 0;
+    let photoWarning = '';
 
     try {
       const tags = [...new Set(pending.map(p => p.tag.trim()))];
@@ -134,9 +151,11 @@ export default function FieldCaptureScreen() {
 
       for (const e of pending) {
         const slotN = parseInt(e.slot, 10);
-        const condCodes = [...e.conditions];
+        const plainCodes = marksToCodes(e.marks);
+        const detailedCodes = e.marks.map(markToString);
         const cullCode = cullToConditionCode(e.cull);
-        if (cullCode) condCodes.push(cullCode);
+        const liveCodes = [...plainCodes];
+        if (cullCode) liveCodes.push(cullCode);
 
         const live = {
           tag: e.tag.trim(),
@@ -145,7 +164,7 @@ export default function FieldCaptureScreen() {
           pen_slot: slotN,
           belly_cm: e.size ? parseFloat(e.size) : null,
           grade: e.grade ? parseInt(e.grade, 10) : null,
-          condition_codes: condCodes,
+          condition_codes: liveCodes,
           inspection_date: e.date,
           cull_schedule: normaliseCull(e.cull) || null,
         };
@@ -173,16 +192,42 @@ export default function FieldCaptureScreen() {
             croc_id: crocId,
             inspection_date: e.date,
             belly_cm: live.belly_cm,
-            condition_codes: condCodes,
+            condition_codes: detailedCodes.length ? detailedCodes : plainCodes,
           });
           if (error) { failed++; console.error(error); }
           else inspections++;
+
+          // Photo evidence
+          if (e.photo) {
+            const path = `${e.tag.trim()}/${e.date}-${e.id}.jpg`;
+            const up = await supabase.storage.from(PHOTO_BUCKET)
+              .upload(path, dataUrlToBlob(e.photo), { contentType: 'image/jpeg', upsert: true });
+            if (up.error) {
+              photoWarning = up.error.message;
+            } else {
+              const { data: pub } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+              const { error: pErr } = await supabase.from('croc_photos').insert({
+                croc_id: crocId,
+                tag: e.tag.trim(),
+                inspection_date: e.date,
+                photo_url: pub.publicUrl,
+                storage_path: path,
+                belly_cm: live.belly_cm,
+                marks: e.marks,
+              });
+              if (pErr) photoWarning = pErr.message;
+              else photos++;
+            }
+          }
         }
       }
 
       queryClient.invalidateQueries();
-      toast.success(`Committed: ${inserted} new · ${updated} updated · ${inspections} inspections${failed ? ` · ${failed} failed` : ''}`);
-      if (failed === 0) setPending([]);
+      toast.success(`Committed: ${inserted} new · ${updated} updated · ${inspections} inspections · ${photos} photos${failed ? ` · ${failed} failed` : ''}`);
+      if (photoWarning) {
+        toast.error(`Photos not stored: ${photoWarning}`);
+      }
+      if (failed === 0 && !photoWarning) setPending([]);
     } catch (err: any) {
       toast.error(`Commit failed: ${err.message ?? err}`);
     } finally {
@@ -244,29 +289,61 @@ export default function FieldCaptureScreen() {
           </Field>
         </div>
 
-        <div className="mt-5">
-          <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-2">Conditions</div>
-          <div className="flex flex-wrap gap-2">
-            {conditionCodes.length === 0 && (
-              <span className="text-ct-text3 text-xs">Loading condition codes…</span>
-            )}
-            {conditionCodes.map(c => {
-              const active = draft.conditions.includes(c.code);
-              return (
-                <button
-                  key={c.code}
-                  onClick={() => toggleCondition(c.code)}
-                  className={`px-3 py-2 rounded-sm text-xs font-mono-ibm border transition-all active:scale-95 ${
-                    active
-                      ? 'bg-ct-accent text-background border-ct-accent'
-                      : 'bg-surface-2 text-ct-text2 border-border hover:border-ct-accent hover:text-ct-text'
-                  }`}
-                >
-                  {c.code} · {c.name}
-                </button>
-              );
-            })}
+        {/* Photo (required) */}
+        <div className="mt-6">
+          <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-2">
+            Photo · required
           </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={e => onPickPhoto(e.target.files?.[0] ?? undefined)}
+          />
+          {draft.photo ? (
+            <div className="flex items-center gap-3">
+              <img src={draft.photo} alt="Captured crocodile" className="w-24 h-24 object-cover rounded-sm border border-border" />
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-accent border border-border rounded-sm px-3 py-2 active:scale-95 hover:border-ct-accent"
+                >
+                  Retake
+                </button>
+                <button
+                  onClick={() => setDraft(d => ({ ...d, photo: '' }))}
+                  className="font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-danger px-3 py-2 active:scale-95"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 border border-dashed border-border rounded-sm py-6 text-ct-text2 font-mono-ibm text-xs uppercase tracking-[1.5px] hover:border-ct-accent hover:text-ct-accent active:scale-[.99] transition-all"
+            >
+              <Camera className="w-4 h-4" />
+              Take / attach photo
+            </button>
+          )}
+        </div>
+
+        {/* Location-based conditions */}
+        <div className="mt-6">
+          <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-3">
+            Conditions — tap a spot on the diagram
+          </div>
+          {conditionCodes.length === 0 && (
+            <div className="text-ct-text3 text-xs mb-2">Loading condition codes…</div>
+          )}
+          <CrocConditionMap
+            marks={draft.marks}
+            onChange={marks => setDraft(d => ({ ...d, marks }))}
+            conditionCodes={conditionCodes}
+          />
         </div>
 
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -313,13 +390,16 @@ export default function FieldCaptureScreen() {
               <div key={e.id} className={`flex items-center gap-3 p-3 rounded-sm border ${
                 editingId === e.id ? 'border-ct-accent bg-surface-2' : 'border-border bg-surface-2/50'
               }`}>
+                {e.photo && (
+                  <img src={e.photo} alt={`Croc ${e.tag}`} className="w-12 h-12 object-cover rounded-sm border border-border flex-shrink-0" />
+                )}
                 <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono-ibm">
                   <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>
                   <div><span className="text-ct-text3">Tag </span><span className="text-ct-text">{e.tag}</span></div>
                   <div><span className="text-ct-text3">Size </span><span className="text-ct-text">{e.size || '—'} cm</span></div>
                   <div><span className="text-ct-text3">Gr </span><span className="text-ct-text">{e.grade || '—'}</span></div>
                   <div><span className="text-ct-text3">Cull </span><span className="text-ct-text">{e.cull || '—'}</span></div>
-                  <div className="truncate"><span className="text-ct-text3">Cond </span><span className="text-ct-text">{e.conditions.join(', ') || '—'}</span></div>
+                  <div className="truncate"><span className="text-ct-text3">Cond </span><span className="text-ct-text">{e.marks.map(markToString).join(', ') || '—'}</span></div>
                 </div>
                 <button onClick={() => editEntry(e)} className="p-2 text-ct-text2 hover:text-ct-accent active:scale-95" aria-label="Edit">
                   <Pencil className="w-4 h-4" />
@@ -365,10 +445,11 @@ function InputBig(props: {
   step?: string;
   min?: string;
 }) {
+  const { onChange, ...rest } = props;
   return (
     <input
-      {...props}
-      onChange={e => props.onChange(e.target.value)}
+      {...rest}
+      onChange={e => onChange(e.target.value)}
       className="bg-surface-2 border border-border text-ct-text px-3 py-3 rounded-sm font-mono-ibm text-sm outline-none focus:border-ct-accent"
     />
   );
