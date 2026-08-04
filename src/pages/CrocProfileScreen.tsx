@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAllCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
 import { useFeedRecords } from '@/hooks/useFeedData';
 import { useGrowthRates } from '@/hooks/useCullData';
+import { useCrocPhotos } from '@/hooks/useCrocPhotos';
 import { sizeBand } from '@/lib/crocUtils';
+
 
 const CULL_THRESHOLD = 54;
 
