@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAllCrocs, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
 import { useFeedRecords } from '@/hooks/useFeedData';
 import { useGrowthRates } from '@/hooks/useCullData';
+import { useCrocPhotos } from '@/hooks/useCrocPhotos';
 import { sizeBand } from '@/lib/crocUtils';
+
 
 const CULL_THRESHOLD = 54;
 
@@ -17,6 +19,8 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   const { data: inspections, isLoading: loadingHistory } = useInspectionHistory(selectedCroc?.id);
   const { data: feedRecords } = useFeedRecords(selectedCroc?.pen_id);
   const { data: growthRates } = useGrowthRates();
+  const { data: crocPhotos = [], error: photoError } = useCrocPhotos(selectedCroc?.id, selectedCroc?.tag);
+
 
   useEffect(() => {
     if (initialSearch && initialSearch !== searchTag) {
@@ -232,6 +236,56 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
                 </div>
               </div>
             </div>
+
+            {/* Photo History — oldest capture first */}
+            <div className="bg-surface border border-border rounded overflow-hidden">
+              <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
+                <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Photo History</span>
+                <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">
+                  {crocPhotos.length} photo{crocPhotos.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="px-[18px] py-4">
+                {photoError ? (
+                  <div className="text-center py-4 text-ct-text3 font-mono-ibm text-[11px]">
+                    Photo storage is not set up yet.
+                  </div>
+                ) : crocPhotos.length === 0 ? (
+                  <div className="text-center py-4 text-ct-text3 font-mono-ibm text-[11px]">
+                    No photo evidence captured for this croc yet.
+                  </div>
+                ) : (
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {crocPhotos.map(p => (
+                      <figure key={p.id} className="flex-shrink-0 w-[150px]">
+                        <a href={p.photo_url} target="_blank" rel="noreferrer">
+                          <img
+                            src={p.photo_url}
+                            alt={`Croc ${croc.tag ?? croc.id} inspected ${p.inspection_date}`}
+                            loading="lazy"
+                            className="w-[150px] h-[150px] object-cover rounded-sm border border-border hover:border-ct-accent transition-colors"
+                          />
+                        </a>
+                        <figcaption className="mt-1.5">
+                          <div className="font-mono-ibm text-[10px] text-ct-accent">{p.inspection_date}</div>
+                          <div className="font-mono-ibm text-[9px] text-ct-text3">
+                            {p.belly_cm ? `${p.belly_cm} cm` : 'No measurement'}
+                            {p.marks?.length ? ` · ${p.marks.length} mark${p.marks.length > 1 ? 's' : ''}` : ''}
+                          </div>
+                          {p.marks?.length ? (
+                            <div className="font-mono-ibm text-[9px] text-ct-warn leading-snug mt-0.5">
+                              {p.marks.map(m => `${m.code} ${m.zoneLabel}`).join(' · ')}
+                            </div>
+                          ) : null}
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+
 
             {/* Growth Chart */}
             <div className="bg-surface border border-border rounded overflow-hidden">
