@@ -19,6 +19,8 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   const { data: inspections, isLoading: loadingHistory } = useInspectionHistory(selectedCroc?.id);
   const { data: feedRecords } = useFeedRecords(selectedCroc?.pen_id);
   const { data: growthRates } = useGrowthRates();
+  const { data: crocPhotos = [], error: photoError } = useCrocPhotos(selectedCroc?.id, selectedCroc?.tag);
+
 
   useEffect(() => {
     if (initialSearch && initialSearch !== searchTag) {
