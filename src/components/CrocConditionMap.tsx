@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import crocDiagram from '@/assets/croc-diagram.png.asset.json';
+import crocDiagram from '@/assets/croc-diagram.png';
 import {
   CROC_H, CROC_W, CROC_ZONES, ZONE_BY_KEY,
   markerPosition, type ConditionMark,
@@ -50,7 +50,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
 
       <div className="relative mx-auto max-w-[340px] select-none" style={{ touchAction: 'manipulation' }}>
         <img
-          src={crocDiagram.url}
+          src={crocDiagram}
           alt="Crocodile body diagram for marking condition locations"
           className="w-full h-auto block pointer-events-none"
           draggable={false}
