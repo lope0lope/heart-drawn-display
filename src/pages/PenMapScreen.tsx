@@ -227,6 +227,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             <option value="health">Heatmap: Health Status</option>
             <option value="condition">Heatmap: Condition Type</option>
             <option value="size">Heatmap: Size Category</option>
+            <option value="tenure">Heatmap: Time in Pen</option>
           </select>
           <span className="font-mono-ibm text-[10px] text-ct-text3">{statsText}</span>
           <button onClick={handlePrint} className="ml-auto bg-transparent text-ct-accent border border-border px-3.5 py-[7px] font-mono-ibm text-[11px] tracking-[1px] cursor-pointer rounded-sm transition-all hover:border-ct-accent hover:bg-surface-2 whitespace-nowrap">⎙ Print / Export</button>
