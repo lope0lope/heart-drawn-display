@@ -545,8 +545,85 @@ export default function DataUploadScreen() {
                 {exporting === 'history' ? 'Exporting…' : '↓ Inspection History'}
               </button>
             </div>
+
+            {/* Excel export with day / date-range filters */}
+            <div className="border-t border-border pt-3 mt-1">
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-1.5">Excel export — by day or date range</div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {RANGE_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setPreset(p.id); setDayCounts(null); }}
+                    className={`px-2.5 py-1.5 font-mono-ibm text-[10px] rounded-sm border cursor-pointer transition-all ${
+                      preset === p.id
+                        ? 'bg-ct-accent text-background border-ct-accent'
+                        : 'bg-surface-2 text-ct-text2 border-border hover:border-ct-accent'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {preset === 'custom' && (
+                <div className="flex gap-2 items-end mb-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-[1px]">From</span>
+                    <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setDayCounts(null); }}
+                      className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-[1px]">To</span>
+                    <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setDayCounts(null); }}
+                      className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent" />
+                  </label>
+                </div>
+              )}
+              <div className="font-mono-ibm text-[10px] text-ct-text3 mb-2">
+                Range: {activeRange.from ?? 'start'} → {activeRange.to ?? 'today'} · Pen: {penFilter || 'All'}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCountDays}
+                  disabled={countingDays}
+                  className="flex-1 bg-transparent text-ct-accent border border-border px-3 py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:border-ct-accent"
+                >
+                  {countingDays ? 'Counting…' : '⧗ Count Entries Per Day'}
+                </button>
+                <button
+                  onClick={handleExcelExport}
+                  disabled={exporting !== null}
+                  className="flex-1 bg-ct-accent text-background px-3 py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:bg-ct-accent2"
+                >
+                  {exporting === 'xlsx' ? 'Exporting…' : '↓ Excel (.xlsx)'}
+                </button>
+              </div>
+              {dayCounts && dayCounts.length > 0 && (
+                <div className="mt-3 max-h-[180px] overflow-y-auto border border-border rounded-sm">
+                  <table className="w-full border-collapse text-[10px] font-mono-ibm">
+                    <thead className="sticky top-0 bg-surface-3">
+                      <tr>
+                        {['Date', 'Entries', 'Crocs', 'Avg cm'].map(h => (
+                          <th key={h} className="p-[4px_8px] text-ct-text3 text-left border-b border-border">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayCounts.map(d => (
+                        <tr key={d.date}>
+                          <td className="p-[4px_8px] text-ct-text2">{d.date}</td>
+                          <td className="p-[4px_8px] text-ct-accent">{d.entries}</td>
+                          <td className="p-[4px_8px] text-ct-text2">{d.crocs}</td>
+                          <td className="p-[4px_8px] text-ct-text3">{d.avgCm ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
 
         {/* Upload History */}
         <div className="bg-surface border border-border rounded overflow-hidden">
