@@ -4,6 +4,7 @@ import { useFeedRecords } from '@/hooks/useFeedData';
 import { useGrowthRates } from '@/hooks/useCullData';
 import { useCrocPhotos } from '@/hooks/useCrocPhotos';
 import { sizeBand } from '@/lib/crocUtils';
+import { penTenure, buildPenStays, tenureColor } from '@/lib/penTenure';
 
 
 const CULL_THRESHOLD = 54;
