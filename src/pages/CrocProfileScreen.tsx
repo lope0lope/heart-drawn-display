@@ -43,6 +43,11 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
   };
 
   const croc = selectedCroc;
+  const tenureInfo = useMemo(
+    () => (croc ? penTenure(croc) : { since: null, days: null, estimated: true }),
+    [croc]
+  );
+  const penStays = useMemo(() => buildPenStays(inspections ?? []), [inspections]);
   const history = inspections ?? [];
   const growthDelta = history.length >= 2
     ? (history[history.length - 1].belly_cm ?? 0) - (history[0].belly_cm ?? 0)
