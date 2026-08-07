@@ -9,6 +9,7 @@ import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
 import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
+import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
 
 const STORAGE_KEY = 'croctrack.field-capture.pending.v2';
 
