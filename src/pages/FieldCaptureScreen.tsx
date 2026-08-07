@@ -80,7 +80,7 @@ export default function FieldCaptureScreen() {
   const isValid = useMemo(() => {
     const slotN = parseInt(draft.slot, 10);
     return draft.house && draft.line && Number.isFinite(slotN) && slotN >= 1
-      && draft.tag.trim().length > 0 && draft.date && !!draft.photo;
+      && draft.tag.trim().length > 0 && !!draft.date;
   }, [draft]);
 
   const onPickPhoto = async (file?: File) => {
@@ -94,10 +94,6 @@ export default function FieldCaptureScreen() {
   };
 
   const saveDraft = useCallback(() => {
-    if (!draft.photo) {
-      toast.error('A photo is required for every entry.');
-      return;
-    }
     if (!isValid) {
       toast.error('Fill in House, Line, Slot, Tag and Date first.');
       return;
