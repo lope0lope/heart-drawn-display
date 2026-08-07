@@ -402,8 +402,10 @@ export default function FieldCaptureScreen() {
               <div key={e.id} className={`flex items-center gap-3 p-3 rounded-sm border ${
                 editingId === e.id ? 'border-ct-accent bg-surface-2' : 'border-border bg-surface-2/50'
               }`}>
-                {e.photo && (
+                {e.photo ? (
                   <img src={e.photo} alt={`Croc ${e.tag}`} className="w-12 h-12 object-cover rounded-sm border border-border flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-sm border border-dashed border-border flex items-center justify-center text-[8px] font-mono-ibm text-ct-text3 flex-shrink-0 text-center leading-tight">no<br />photo</div>
                 )}
                 <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono-ibm">
                   <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>
