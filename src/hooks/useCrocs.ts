@@ -12,6 +12,11 @@ export interface CrocRecord {
   condition_codes: string[];
   inspection_date: string;
   cull_schedule: string | null;
+  /** First-ever record on the farm (added by the placement-history migration). */
+  placement_date?: string | null;
+  placement_belly_cm?: number | null;
+  /** Date the croc entered its current pen / line / slot. */
+  pen_since?: string | null;
 }
 
 export interface ConditionCodeRecord {
@@ -72,6 +77,10 @@ export interface InspectionRecord {
   inspection_date: string;
   belly_cm: number | null;
   condition_codes: string[];
+  /** Pen context recorded from the placement-history migration onwards. */
+  pen_id?: string | null;
+  line?: string | null;
+  pen_slot?: number | null;
 }
 
 export function useInspectionHistory(crocId?: number) {
