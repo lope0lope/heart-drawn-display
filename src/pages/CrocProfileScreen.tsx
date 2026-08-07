@@ -237,6 +237,64 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
               </div>
             </div>
 
+            {/* Placement & Pen History */}
+            <div className="bg-surface border border-border rounded overflow-hidden">
+              <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
+                <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Placement & Pen History</span>
+                {tenureInfo.days !== null && (
+                  <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm" style={{ background: 'rgba(255,255,255,.06)', color: tenureColor(tenureInfo.days) }}>
+                    {tenureInfo.days} days in current pen{tenureInfo.estimated ? ' (est.)' : ''}
+                  </span>
+                )}
+              </div>
+              <div className="px-[18px] py-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  {[
+                    { label: 'Placement date', value: croc.placement_date ?? '—' },
+                    { label: 'Placement size', value: croc.placement_belly_cm != null ? `${croc.placement_belly_cm} cm` : '—' },
+                    { label: 'In pen since', value: tenureInfo.since ?? '—' },
+                    { label: 'Growth since placement', value: croc.placement_belly_cm != null && croc.belly_cm != null ? `+${(croc.belly_cm - croc.placement_belly_cm).toFixed(1)} cm` : '—' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-surface-2 border border-border rounded-sm p-2.5">
+                      <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[1.5px] uppercase mb-1">{s.label}</div>
+                      <div className="font-mono-ibm text-[13px] text-ct-text">{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {penStays.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-[11px] font-mono-ibm min-w-[420px]">
+                      <thead>
+                        <tr>
+                          {['Pen', 'Slot', 'From', 'To', 'Days', 'Size at move'].map(h => (
+                            <th key={h} className="p-[6px_10px] text-ct-text3 text-left border-b border-border font-normal tracking-[1px] uppercase text-[9px]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {penStays.map((s, i) => (
+                          <tr key={`${s.pen_id}-${s.line}-${s.pen_slot}-${s.from}`} className={i === penStays.length - 1 ? 'text-ct-text' : 'text-ct-text2'}>
+                            <td className="p-[6px_10px] border-b border-border/50 text-ct-accent">{s.pen_id}</td>
+                            <td className="p-[6px_10px] border-b border-border/50">{s.line}-{s.pen_slot}</td>
+                            <td className="p-[6px_10px] border-b border-border/50">{s.from}</td>
+                            <td className="p-[6px_10px] border-b border-border/50">{s.to ?? 'current'}</td>
+                            <td className="p-[6px_10px] border-b border-border/50" style={{ color: tenureColor(s.days) }}>{s.days ?? '—'}</td>
+                            <td className="p-[6px_10px] border-b border-border/50">{s.belly_cm != null ? `${s.belly_cm} cm` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="font-mono-ibm text-[10px] text-ct-text3 leading-[1.8]">
+                    No pen movement history recorded yet. Pen positions are logged from the next inspection upload onwards.
+                  </div>
+                )}
+              </div>
+            </div>
+
+
             {/* Photo History — oldest capture first */}
             <div className="bg-surface border border-border rounded overflow-hidden">
               <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
