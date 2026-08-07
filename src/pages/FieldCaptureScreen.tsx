@@ -9,6 +9,7 @@ import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
 import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
+import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
 
 const STORAGE_KEY = 'croctrack.field-capture.pending.v2';
 
@@ -80,7 +81,7 @@ export default function FieldCaptureScreen() {
   const isValid = useMemo(() => {
     const slotN = parseInt(draft.slot, 10);
     return draft.house && draft.line && Number.isFinite(slotN) && slotN >= 1
-      && draft.tag.trim().length > 0 && draft.date && !!draft.photo;
+      && draft.tag.trim().length > 0 && !!draft.date;
   }, [draft]);
 
   const onPickPhoto = async (file?: File) => {
@@ -94,10 +95,6 @@ export default function FieldCaptureScreen() {
   };
 
   const saveDraft = useCallback(() => {
-    if (!draft.photo) {
-      toast.error('A photo is required for every entry.');
-      return;
-    }
     if (!isValid) {
       toast.error('Fill in House, Line, Slot, Tag and Date first.');
       return;
@@ -145,9 +142,9 @@ export default function FieldCaptureScreen() {
       const tags = [...new Set(pending.map(p => p.tag.trim()))];
       const { data: existing } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date')
+        .select('*')
         .in('tag', tags);
-      const tagToId = new Map((existing ?? []).map(c => [c.tag, c] as const));
+      const tagToId = new Map((existing ?? []).map(c => [c.tag, c as any] as const));
 
       for (const e of pending) {
         const slotN = parseInt(e.slot, 10);
@@ -157,7 +154,7 @@ export default function FieldCaptureScreen() {
         const liveCodes = [...plainCodes];
         if (cullCode) liveCodes.push(cullCode);
 
-        const live = {
+        const live: any = {
           tag: e.tag.trim(),
           pen_id: e.house,
           line: e.line,
@@ -173,13 +170,24 @@ export default function FieldCaptureScreen() {
         let crocId: number | undefined = ex?.id;
 
         if (!ex) {
-          const { data, error } = await supabase.from('crocs').insert(live).select('id').single();
+          const { data, error } = await insertOneSafe('crocs', {
+            ...live,
+            placement_date: e.date,
+            placement_belly_cm: live.belly_cm,
+            pen_since: e.date,
+          }, CROC_PLACEMENT_KEYS);
           if (error) { failed++; console.error(error); continue; }
-          crocId = data.id;
+          crocId = (data as any).id;
           inserted++;
         } else {
           if ((ex.inspection_date ?? '') <= e.date) {
-            const { error } = await supabase.from('crocs').update(live).eq('id', ex.id);
+            const moved = ex.pen_id !== e.house || ex.line !== e.line || ex.pen_slot !== slotN;
+            const { error } = await updateSafeById('crocs', ex.id, {
+              ...live,
+              placement_date: ex.placement_date ?? e.date,
+              placement_belly_cm: ex.placement_belly_cm ?? live.belly_cm,
+              pen_since: moved ? e.date : (ex.pen_since ?? e.date),
+            }, CROC_PLACEMENT_KEYS);
             if (error) { failed++; console.error(error); continue; }
             updated++;
           }
@@ -188,12 +196,15 @@ export default function FieldCaptureScreen() {
         if (crocId) {
           await supabase.from('inspections').delete()
             .eq('croc_id', crocId).eq('inspection_date', e.date);
-          const { error } = await supabase.from('inspections').insert({
+          const { error } = await insertSafe('inspections', [{
             croc_id: crocId,
             inspection_date: e.date,
             belly_cm: live.belly_cm,
             condition_codes: detailedCodes.length ? detailedCodes : plainCodes,
-          });
+            pen_id: e.house,
+            line: e.line,
+            pen_slot: slotN,
+          }], INSPECTION_PEN_KEYS);
           if (error) { failed++; console.error(error); }
           else inspections++;
 
@@ -289,11 +300,12 @@ export default function FieldCaptureScreen() {
           </Field>
         </div>
 
-        {/* Photo (required) */}
+        {/* Photo (optional) */}
         <div className="mt-6">
           <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-2">
-            Photo · required
+            Photo · optional
           </div>
+
           <input
             ref={fileRef}
             type="file"
@@ -390,8 +402,10 @@ export default function FieldCaptureScreen() {
               <div key={e.id} className={`flex items-center gap-3 p-3 rounded-sm border ${
                 editingId === e.id ? 'border-ct-accent bg-surface-2' : 'border-border bg-surface-2/50'
               }`}>
-                {e.photo && (
+                {e.photo ? (
                   <img src={e.photo} alt={`Croc ${e.tag}`} className="w-12 h-12 object-cover rounded-sm border border-border flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-sm border border-dashed border-border flex items-center justify-center text-[8px] font-mono-ibm text-ct-text3 flex-shrink-0 text-center leading-tight">no<br />photo</div>
                 )}
                 <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono-ibm">
                   <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>

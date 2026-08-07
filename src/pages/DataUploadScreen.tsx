@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { exportLiveCrocs, exportInspectionHistory } from '@/lib/exportData';
 import { useUploadLogs } from '@/hooks/useFeedData';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,6 +7,8 @@ import { parseInspectionFile, cullToConditionCode, type ParsedInspectionRow, typ
 import { useQueryClient } from '@tanstack/react-query';
 import CrocDatasetTable from '@/components/CrocDatasetTable';
 import { sizeBand } from '@/lib/crocUtils';
+import { insertSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
+import { exportEntriesWorkbook, previewEntryCounts, RANGE_PRESETS, isoDay, type DayCount } from '@/lib/excelExport';
 
 export const CULLED_MARKER = 'CULLED';
 
@@ -23,8 +25,45 @@ export default function DataUploadScreen() {
   const [validations, setValidations] = useState<ValidationResult[]>([]);
   const [importing, setImporting] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [preset, setPreset] = useState('7d');
+  const [customFrom, setCustomFrom] = useState(isoDay(-7));
+  const [customTo, setCustomTo] = useState(isoDay(0));
+  const [dayCounts, setDayCounts] = useState<DayCount[] | null>(null);
+  const [countingDays, setCountingDays] = useState(false);
   const { data: uploadHistory, refetch: refetchLogs } = useUploadLogs();
   const queryClient = useQueryClient();
+
+  const activeRange = useMemo(() => {
+    if (preset === 'custom') return { from: customFrom || null, to: customTo || null };
+    const p = RANGE_PRESETS.find(x => x.id === preset) ?? RANGE_PRESETS[2];
+    return p.range();
+  }, [preset, customFrom, customTo]);
+
+  const handleCountDays = useCallback(async () => {
+    setCountingDays(true);
+    try {
+      const { days } = await previewEntryCounts({ ...activeRange, pen: penFilter || undefined });
+      setDayCounts(days);
+      if (days.length === 0) toast.info('No entries in that range');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not count entries');
+    } finally {
+      setCountingDays(false);
+    }
+  }, [activeRange, penFilter]);
+
+  const handleExcelExport = useCallback(async () => {
+    setExporting('xlsx');
+    try {
+      const count = await exportEntriesWorkbook({ ...activeRange, pen: penFilter || undefined });
+      toast.success(`Exported ${count} entries to Excel`);
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  }, [activeRange, penFilter]);
+
 
   const handleFile = useCallback(async (file: File) => {
     setFileName(file.name);
@@ -85,10 +124,10 @@ export default function DataUploadScreen() {
       // 1. Fetch existing crocs for these tags + their latest inspection date
       const { data: existingCrocs } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date, cull_schedule')
+        .select('*')
         .in('tag', uniqueTags);
       const tagToExisting = new Map(
-        (existingCrocs ?? []).map(c => [c.tag, c])
+        (existingCrocs ?? []).map(c => [c.tag, c as any])
       );
 
       // 2. For NEW tags → insert a crocs row using this inspection's data
@@ -104,7 +143,7 @@ export default function DataUploadScreen() {
 
         const rowDate = r.inspection_date || inspectionDate;
 
-        const liveFields = {
+        const liveFields: any = {
           tag: r.tag,
           pen_id: r.pen,
           line: r.line,
@@ -118,14 +157,33 @@ export default function DataUploadScreen() {
 
         const existing = tagToExisting.get(r.tag);
         if (!existing) {
-          newCrocPayloads.push(liveFields);
+          newCrocPayloads.push({
+            ...liveFields,
+            placement_date: rowDate,
+            placement_belly_cm: r.belly_cm,
+            pen_since: rowDate,
+          });
         } else {
           const existingDate = existing.inspection_date ?? '';
           if (rowDate >= existingDate) {
-            updatesNewer.push({ id: existing.id, payload: liveFields });
+            // Reset pen tenure only when the croc actually moved.
+            const moved =
+              existing.pen_id !== r.pen ||
+              existing.line !== r.line ||
+              existing.pen_slot !== r.pen_slot;
+            updatesNewer.push({
+              id: existing.id,
+              payload: {
+                ...liveFields,
+                placement_date: existing.placement_date ?? rowDate,
+                placement_belly_cm: existing.placement_belly_cm ?? r.belly_cm,
+                pen_since: moved ? rowDate : (existing.pen_since ?? rowDate),
+              },
+            });
           }
         }
       }
+
 
       // 3. Insert new crocs. If one duplicate tag exists in a 500-row batch,
       // Supabase rejects the whole batch; retry row-by-row so valid A–I rows
@@ -134,12 +192,12 @@ export default function DataUploadScreen() {
       let skippedNewCount = 0;
       for (let i = 0; i < newCrocPayloads.length; i += 500) {
         const batch = newCrocPayloads.slice(i, i + 500);
-        const { error } = await supabase.from('crocs').insert(batch);
+        const { error } = await insertSafe('crocs', batch, CROC_PLACEMENT_KEYS);
         if (error) {
           warnings++;
           console.error('Insert batch error:', error);
           for (const payload of batch) {
-            const { error: rowError } = await supabase.from('crocs').insert(payload);
+            const { error: rowError } = await insertSafe('crocs', [payload], CROC_PLACEMENT_KEYS);
             if (rowError) {
               skippedNewCount++;
               console.error('Insert row error:', { tag: payload.tag, line: payload.line, pen_slot: payload.pen_slot, error: rowError });
@@ -154,7 +212,7 @@ export default function DataUploadScreen() {
 
       // 4. Update existing crocs whose live fields should advance
       for (const u of updatesNewer) {
-        const { error } = await supabase.from('crocs').update(u.payload).eq('id', u.id);
+        const { error } = await updateSafeById('crocs', u.id, u.payload, CROC_PLACEMENT_KEYS);
         if (error) {
           warnings++;
           console.error('Update error:', error);
@@ -198,6 +256,9 @@ export default function DataUploadScreen() {
           inspection_date: date,
           belly_cm: r.belly_cm,
           condition_codes: condCodes,
+          pen_id: r.pen,
+          line: r.line,
+          pen_slot: r.pen_slot,
         });
       }
       const inspections = [...inspectionMap.values()];
@@ -205,7 +266,7 @@ export default function DataUploadScreen() {
 
       for (let i = 0; i < inspections.length; i += 500) {
         const batch = inspections.slice(i, i + 500);
-        const { error } = await supabase.from('inspections').insert(batch);
+        const { error } = await insertSafe('inspections', batch, INSPECTION_PEN_KEYS);
         if (error) {
           warnings++;
           console.error('Inspection insert error:', error);
@@ -484,8 +545,85 @@ export default function DataUploadScreen() {
                 {exporting === 'history' ? 'Exporting…' : '↓ Inspection History'}
               </button>
             </div>
+
+            {/* Excel export with day / date-range filters */}
+            <div className="border-t border-border pt-3 mt-1">
+              <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-1.5">Excel export — by day or date range</div>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {RANGE_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setPreset(p.id); setDayCounts(null); }}
+                    className={`px-2.5 py-1.5 font-mono-ibm text-[10px] rounded-sm border cursor-pointer transition-all ${
+                      preset === p.id
+                        ? 'bg-ct-accent text-background border-ct-accent'
+                        : 'bg-surface-2 text-ct-text2 border-border hover:border-ct-accent'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {preset === 'custom' && (
+                <div className="flex gap-2 items-end mb-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-[1px]">From</span>
+                    <input type="date" value={customFrom} onChange={e => { setCustomFrom(e.target.value); setDayCounts(null); }}
+                      className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-[1px]">To</span>
+                    <input type="date" value={customTo} onChange={e => { setCustomTo(e.target.value); setDayCounts(null); }}
+                      className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent" />
+                  </label>
+                </div>
+              )}
+              <div className="font-mono-ibm text-[10px] text-ct-text3 mb-2">
+                Range: {activeRange.from ?? 'start'} → {activeRange.to ?? 'today'} · Pen: {penFilter || 'All'}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCountDays}
+                  disabled={countingDays}
+                  className="flex-1 bg-transparent text-ct-accent border border-border px-3 py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:border-ct-accent"
+                >
+                  {countingDays ? 'Counting…' : '⧗ Count Entries Per Day'}
+                </button>
+                <button
+                  onClick={handleExcelExport}
+                  disabled={exporting !== null}
+                  className="flex-1 bg-ct-accent text-background px-3 py-2.5 font-mono-ibm text-[11px] font-medium tracking-[1px] uppercase rounded-sm cursor-pointer disabled:opacity-50 transition-all hover:bg-ct-accent2"
+                >
+                  {exporting === 'xlsx' ? 'Exporting…' : '↓ Excel (.xlsx)'}
+                </button>
+              </div>
+              {dayCounts && dayCounts.length > 0 && (
+                <div className="mt-3 max-h-[180px] overflow-y-auto border border-border rounded-sm">
+                  <table className="w-full border-collapse text-[10px] font-mono-ibm">
+                    <thead className="sticky top-0 bg-surface-3">
+                      <tr>
+                        {['Date', 'Entries', 'Crocs', 'Avg cm'].map(h => (
+                          <th key={h} className="p-[4px_8px] text-ct-text3 text-left border-b border-border">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dayCounts.map(d => (
+                        <tr key={d.date}>
+                          <td className="p-[4px_8px] text-ct-text2">{d.date}</td>
+                          <td className="p-[4px_8px] text-ct-accent">{d.entries}</td>
+                          <td className="p-[4px_8px] text-ct-text2">{d.crocs}</td>
+                          <td className="p-[4px_8px] text-ct-text3">{d.avgCm ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
 
         {/* Upload History */}
         <div className="bg-surface border border-border rounded overflow-hidden">
