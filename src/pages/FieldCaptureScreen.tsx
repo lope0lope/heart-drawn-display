@@ -141,9 +141,9 @@ export default function FieldCaptureScreen() {
       const tags = [...new Set(pending.map(p => p.tag.trim()))];
       const { data: existing } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date')
+        .select('*')
         .in('tag', tags);
-      const tagToId = new Map((existing ?? []).map(c => [c.tag, c] as const));
+      const tagToId = new Map((existing ?? []).map(c => [c.tag, c as any] as const));
 
       for (const e of pending) {
         const slotN = parseInt(e.slot, 10);
@@ -153,7 +153,7 @@ export default function FieldCaptureScreen() {
         const liveCodes = [...plainCodes];
         if (cullCode) liveCodes.push(cullCode);
 
-        const live = {
+        const live: any = {
           tag: e.tag.trim(),
           pen_id: e.house,
           line: e.line,
@@ -169,13 +169,24 @@ export default function FieldCaptureScreen() {
         let crocId: number | undefined = ex?.id;
 
         if (!ex) {
-          const { data, error } = await supabase.from('crocs').insert(live).select('id').single();
+          const { data, error } = await insertOneSafe('crocs', {
+            ...live,
+            placement_date: e.date,
+            placement_belly_cm: live.belly_cm,
+            pen_since: e.date,
+          }, CROC_PLACEMENT_KEYS);
           if (error) { failed++; console.error(error); continue; }
-          crocId = data.id;
+          crocId = (data as any).id;
           inserted++;
         } else {
           if ((ex.inspection_date ?? '') <= e.date) {
-            const { error } = await supabase.from('crocs').update(live).eq('id', ex.id);
+            const moved = ex.pen_id !== e.house || ex.line !== e.line || ex.pen_slot !== slotN;
+            const { error } = await updateSafeById('crocs', ex.id, {
+              ...live,
+              placement_date: ex.placement_date ?? e.date,
+              placement_belly_cm: ex.placement_belly_cm ?? live.belly_cm,
+              pen_since: moved ? e.date : (ex.pen_since ?? e.date),
+            }, CROC_PLACEMENT_KEYS);
             if (error) { failed++; console.error(error); continue; }
             updated++;
           }
@@ -184,12 +195,15 @@ export default function FieldCaptureScreen() {
         if (crocId) {
           await supabase.from('inspections').delete()
             .eq('croc_id', crocId).eq('inspection_date', e.date);
-          const { error } = await supabase.from('inspections').insert({
+          const { error } = await insertSafe('inspections', [{
             croc_id: crocId,
             inspection_date: e.date,
             belly_cm: live.belly_cm,
             condition_codes: detailedCodes.length ? detailedCodes : plainCodes,
-          });
+            pen_id: e.house,
+            line: e.line,
+            pen_slot: slotN,
+          }], INSPECTION_PEN_KEYS);
           if (error) { failed++; console.error(error); }
           else inspections++;
 
