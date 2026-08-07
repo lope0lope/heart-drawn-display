@@ -25,8 +25,45 @@ export default function DataUploadScreen() {
   const [validations, setValidations] = useState<ValidationResult[]>([]);
   const [importing, setImporting] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [preset, setPreset] = useState('7d');
+  const [customFrom, setCustomFrom] = useState(isoDay(-7));
+  const [customTo, setCustomTo] = useState(isoDay(0));
+  const [dayCounts, setDayCounts] = useState<DayCount[] | null>(null);
+  const [countingDays, setCountingDays] = useState(false);
   const { data: uploadHistory, refetch: refetchLogs } = useUploadLogs();
   const queryClient = useQueryClient();
+
+  const activeRange = useMemo(() => {
+    if (preset === 'custom') return { from: customFrom || null, to: customTo || null };
+    const p = RANGE_PRESETS.find(x => x.id === preset) ?? RANGE_PRESETS[2];
+    return p.range();
+  }, [preset, customFrom, customTo]);
+
+  const handleCountDays = useCallback(async () => {
+    setCountingDays(true);
+    try {
+      const { days } = await previewEntryCounts({ ...activeRange, pen: penFilter || undefined });
+      setDayCounts(days);
+      if (days.length === 0) toast.info('No entries in that range');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not count entries');
+    } finally {
+      setCountingDays(false);
+    }
+  }, [activeRange, penFilter]);
+
+  const handleExcelExport = useCallback(async () => {
+    setExporting('xlsx');
+    try {
+      const count = await exportEntriesWorkbook({ ...activeRange, pen: penFilter || undefined });
+      toast.success(`Exported ${count} entries to Excel`);
+    } catch (err: any) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  }, [activeRange, penFilter]);
+
 
   const handleFile = useCallback(async (file: File) => {
     setFileName(file.name);
