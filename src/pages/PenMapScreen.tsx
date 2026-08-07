@@ -122,6 +122,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const totalOccupied = crocs.filter(c => c.belly_cm !== null).length;
   const dupeSlotCount = duplicates.size;
   const statsText = `Showing ${occupied.length} / ${totalOccupied} occupied (${crocs.length} total records)${dupeSlotCount > 0 ? ` · ⚠ ${dupeSlotCount} slots with duplicates` : ''}`;
+  const tenure = tenureStats(occupied);
 
   function getCellColor(croc: CrocRecord): string {
     if (mode === 'health') {
