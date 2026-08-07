@@ -326,7 +326,55 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
               <div className="w-2 h-2 rounded-full" style={{ background: sizeBandColor(i) }} />{b.range}
             </div>
           ))}
+          {mode === 'tenure' && (
+            <>
+              {TENURE_BUCKETS.map((b, i) => (
+                <div key={b.label} className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2">
+                  <div className="w-2 h-2 rounded-full" style={{ background: TENURE_COLORS[i] }} />{b.label}
+                </div>
+              ))}
+              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.06)] text-ct-text3">
+                <div className="w-2 h-2 rounded-full" style={{ background: '#565250' }} />Unknown
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Pen occupancy duration statistics */}
+        {mode === 'tenure' && (
+          <div className="bg-surface border border-border rounded p-4 mb-2.5">
+            <div className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase mb-3">
+              Pen Occupancy Duration — {pen === 'ALL' ? 'GH1 + GH2' : pen}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              {[
+                { l: 'Average', v: tenure.avg },
+                { l: 'Median', v: tenure.median },
+                { l: 'Shortest', v: tenure.min },
+                { l: 'Longest', v: tenure.max },
+              ].map(k => (
+                <div key={k.l} className="bg-surface-2 border border-border rounded-sm p-2.5">
+                  <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[1.5px] uppercase mb-1">{k.l}</div>
+                  <div className="font-display text-[24px] text-ct-text leading-none">{k.v === null ? '—' : `${k.v}`}<span className="text-[11px] text-ct-text3 ml-1">days</span></div>
+                </div>
+              ))}
+            </div>
+            {TENURE_BUCKETS.map((b, i) => (
+              <div key={b.label} className="flex items-center gap-2.5 mb-1.5">
+                <span className="font-mono-ibm text-[10px] text-ct-text3 w-[62px]">{b.label}</span>
+                <div className="flex-1 h-[9px] bg-surface-3 rounded-sm overflow-hidden">
+                  <div className="h-full rounded-sm" style={{ width: `${(tenure.buckets[i] / Math.max(...tenure.buckets, 1)) * 100}%`, background: TENURE_COLORS[i] }} />
+                </div>
+                <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: TENURE_COLORS[i] }}>{tenure.buckets[i]}</span>
+              </div>
+            ))}
+            <div className="font-mono-ibm text-[9px] text-ct-text3 mt-2 leading-[1.7]">
+              {tenure.count} crocs with a known placement date · {tenure.unknown} unknown
+              {tenure.estimated > 0 && ` · ${tenure.estimated} estimated from first record`}
+            </div>
+          </div>
+        )}
+
 
         {/* Pen Grid */}
         <div className="bg-surface border border-border rounded p-4 overflow-auto relative" onMouseLeave={() => setTooltip(null)}>
