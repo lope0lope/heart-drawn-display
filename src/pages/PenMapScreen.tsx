@@ -137,6 +137,8 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
       const firstType = parseConditionCode(vis[0]).type;
       const cd = conditionDefs?.find(c => c.code === firstType) ?? conditionDefs?.find(c => c.code === vis[0]);
       return cd ? `hsl(var(${cd.color_var}))` : '#d4892a';
+    } else if (mode === 'tenure') {
+      return tenureColor(penTenure(croc).days);
     } else {
       if (!croc.belly_cm) return '#565250';
       const b = sizeBand(croc.belly_cm);
