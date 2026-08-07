@@ -1,36 +1,56 @@
-I’ll fix this by treating the uploaded workbook as the source of truth and tightening both parsing and import safeguards.
+# Pen Tenure, Occupancy Heatmap, Placement History, Excel Export, Optional Photos
 
-Plan:
+Five additions. All build on the existing crocs / inspections / croc_photos data, with one schema change so pen history can actually be tracked over time.
 
-1. Inspect the workbook structure
-   - Read the uploaded `Total_DB.xlsx` at sheet/cell level.
-   - Confirm the exact sheet names, header rows, row counts, blank rows, and whether duplicate/old template sheets are being parsed.
-   - Verify the real expected dataset count against rows that have valid `House | Pen | Tag | Size | Grading | Date | Condition | Cull` values.
+## 1. Track where and when each croc was placed
 
-2. Fix the parser to only accept the unified format
-   - Require the 8-column layout in this order: `House, Pen, Tag, Size, Grading, Date, Condition, Cull`.
-   - Stop parsing old GH1/GH2 template-style sheets or any extra workbook tabs that happen to contain partial matching headers.
-   - Validate each row before counting it:
-     - `House` must be `GH1` or `GH2`.
-     - `Pen` must be like `A1`, `B11`, etc.
-     - `Tag` must be present.
-     - `Size` must be numeric.
-     - `Grading` must be only `1` or `2`.
-     - `Condition` must stay in conditions, not grade.
-     - `Cull` must be only `NXT/NX/NEXT`, `1`, `2`, `3`, or blank.
+Today the `inspections` table stores only croc, date, size and conditions — it does not record which pen the croc was in at that time, so pen tenure cannot be derived from existing history. Add:
 
-3. Prevent inflated record counts
-   - Add protection against parsing multiple valid-looking sheets when only one unified data sheet should be imported.
-   - Add duplicate row detection based on the actual inspection identity: `House + Pen + Tag + Date`.
-   - Count only valid data rows, not formatted blanks, summary rows, old template sheets, or duplicate rows.
+- On `inspections`: `pen_id`, `line`, `pen_slot` (recorded on every new inspection, from both the Excel uploader and the field capture page).
+- On `crocs`: `placement_date` and `placement_belly_cm` (first-ever record), plus `pen_since` (date the croc entered its current pen/line/slot).
 
-4. Make import integration safer
-   - Deduplicate tags before fetching existing crocs.
-   - Deduplicate inspections before insert so the same croc/date is not inserted twice.
-   - Keep existing live croc update behavior, but ensure bad rows cannot create partial or conflicting records.
-   - Improve upload validation messages so the preview shows exactly why rows were skipped.
+Backfill: existing rows get `placement_date` / `pen_since` from their earliest known inspection date, and `placement_belly_cm` from their earliest recorded size. Historical inspections get the croc's current pen as a best-effort value, and the UI will label pre-existing tenure as "since first record" so nothing looks more precise than it is.
 
-5. Verify against your file
-   - Run the parser against `Total_DB.xlsx` directly.
-   - Confirm the parsed count matches the real workbook count, not 2600.
-   - Spot-check several rows to confirm: size, grade, condition, cull, GH1/GH2, and pen position are all mapped correctly.
+Maintenance: when an upload or a field entry shows a croc in a different pen/line/slot than before, `pen_since` resets to that inspection date. Same pen means `pen_since` is left alone.
+
+## 2. Pen occupancy duration statistics
+
+New stats block on the Pen Map page for the selected pen (or the combined GH1+GH2 view):
+
+- Average, median, shortest and longest tenure in days.
+- Distribution buckets: 0-30, 31-60, 61-90, 91-180, 180+ days.
+- Count of crocs whose tenure is only known from first record (no observed move).
+
+## 3. Occupancy duration heatmap
+
+Add a "Tenure" option to the existing Pen Map mode selector (alongside health / condition / size). In this mode every slot is coloured on a cold-to-hot scale by days in pen: cool blue for new occupants through to deep red for the longest-standing. Legend shows the day ranges, tooltips show exact days and the date the croc entered the pen. Included in the existing print output.
+
+## 4. Placement date and placement size on the croc profile
+
+New "Placement History" card on the profile page showing:
+
+- Placement date and placement size (first recorded size).
+- Current pen and days in current pen.
+- Total days on farm and total growth since placement.
+- A compact pen movement timeline built from the inspection pen history: pen/line/slot, date moved in, size at that point, and how long the croc stayed.
+
+## 5. Excel export with day and date-range filters
+
+New export panel on the Data Upload page (using the `xlsx` package already installed):
+
+- Presets: Today, Yesterday, Last 7 days, Last 30 days, All time, plus a custom start/end date range.
+- Scope: all pens or a single pen.
+- Output: a multi-sheet `.xlsx` — "Entries" (one row per inspection: date, house, pen, line, slot, tag, size, grade, conditions, cull marker), "Daily Summary" (entries per day, distinct crocs, distinct pens, average size) and "Current Live" (present live croc state for the chosen scope).
+- The panel also shows the entry count per day for the chosen range on screen before exporting, so the count made in one day is visible without opening Excel.
+
+## 6. Photo becomes optional on capture
+
+- Field capture: remove the hard photo requirement — an entry can be saved and committed without one. The photo control stays prominent with an "optional" label, and the pending list marks entries with no photo so they are easy to spot.
+- Profile page: the Photo History strip already renders chronologically; it will keep showing whatever photos exist and stay quiet when a croc has none.
+
+## Technical notes
+
+- One SQL migration for the new columns plus backfill; the profile-page pen timeline and all tenure stats read from `inspections` and need no extra table.
+- New helpers in `src/lib/crocUtils.ts` for tenure calculation and heat colour scaling; new `src/lib/excelExport.ts` for the workbook build.
+- Files touched: `src/pages/PenMapScreen.tsx`, `src/pages/CrocProfileScreen.tsx`, `src/pages/DataUploadScreen.tsx`, `src/pages/FieldCaptureScreen.tsx`, `src/lib/inspectionParser.ts`, `src/hooks/useCrocs.ts`, `src/lib/crocUtils.ts`.
+- Since this project uses a directly connected Supabase project rather than Lovable Cloud, the migration SQL will be provided for you to run once in the Supabase SQL editor, the same way the photo table was handled.
