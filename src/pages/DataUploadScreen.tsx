@@ -85,10 +85,10 @@ export default function DataUploadScreen() {
       // 1. Fetch existing crocs for these tags + their latest inspection date
       const { data: existingCrocs } = await supabase
         .from('crocs')
-        .select('id, tag, inspection_date, cull_schedule')
+        .select('*')
         .in('tag', uniqueTags);
       const tagToExisting = new Map(
-        (existingCrocs ?? []).map(c => [c.tag, c])
+        (existingCrocs ?? []).map(c => [c.tag, c as any])
       );
 
       // 2. For NEW tags → insert a crocs row using this inspection's data
@@ -104,7 +104,7 @@ export default function DataUploadScreen() {
 
         const rowDate = r.inspection_date || inspectionDate;
 
-        const liveFields = {
+        const liveFields: any = {
           tag: r.tag,
           pen_id: r.pen,
           line: r.line,
@@ -118,14 +118,33 @@ export default function DataUploadScreen() {
 
         const existing = tagToExisting.get(r.tag);
         if (!existing) {
-          newCrocPayloads.push(liveFields);
+          newCrocPayloads.push({
+            ...liveFields,
+            placement_date: rowDate,
+            placement_belly_cm: r.belly_cm,
+            pen_since: rowDate,
+          });
         } else {
           const existingDate = existing.inspection_date ?? '';
           if (rowDate >= existingDate) {
-            updatesNewer.push({ id: existing.id, payload: liveFields });
+            // Reset pen tenure only when the croc actually moved.
+            const moved =
+              existing.pen_id !== r.pen ||
+              existing.line !== r.line ||
+              existing.pen_slot !== r.pen_slot;
+            updatesNewer.push({
+              id: existing.id,
+              payload: {
+                ...liveFields,
+                placement_date: existing.placement_date ?? rowDate,
+                placement_belly_cm: existing.placement_belly_cm ?? r.belly_cm,
+                pen_since: moved ? rowDate : (existing.pen_since ?? rowDate),
+              },
+            });
           }
         }
       }
+
 
       // 3. Insert new crocs. If one duplicate tag exists in a 500-row batch,
       // Supabase rejects the whole batch; retry row-by-row so valid A–I rows
