@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { exportLiveCrocs, exportInspectionHistory } from '@/lib/exportData';
 import { useUploadLogs } from '@/hooks/useFeedData';
 import { supabase } from '@/integrations/supabase/client';
