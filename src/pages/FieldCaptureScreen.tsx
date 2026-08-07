@@ -300,11 +300,12 @@ export default function FieldCaptureScreen() {
           </Field>
         </div>
 
-        {/* Photo (required) */}
+        {/* Photo (optional) */}
         <div className="mt-6">
           <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-2">
-            Photo · required
+            Photo · optional
           </div>
+
           <input
             ref={fileRef}
             type="file"
