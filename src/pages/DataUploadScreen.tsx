@@ -153,12 +153,12 @@ export default function DataUploadScreen() {
       let skippedNewCount = 0;
       for (let i = 0; i < newCrocPayloads.length; i += 500) {
         const batch = newCrocPayloads.slice(i, i + 500);
-        const { error } = await supabase.from('crocs').insert(batch);
+        const { error } = await insertSafe('crocs', batch, CROC_PLACEMENT_KEYS);
         if (error) {
           warnings++;
           console.error('Insert batch error:', error);
           for (const payload of batch) {
-            const { error: rowError } = await supabase.from('crocs').insert(payload);
+            const { error: rowError } = await insertSafe('crocs', [payload], CROC_PLACEMENT_KEYS);
             if (rowError) {
               skippedNewCount++;
               console.error('Insert row error:', { tag: payload.tag, line: payload.line, pen_slot: payload.pen_slot, error: rowError });
@@ -173,7 +173,7 @@ export default function DataUploadScreen() {
 
       // 4. Update existing crocs whose live fields should advance
       for (const u of updatesNewer) {
-        const { error } = await supabase.from('crocs').update(u.payload).eq('id', u.id);
+        const { error } = await updateSafeById('crocs', u.id, u.payload, CROC_PLACEMENT_KEYS);
         if (error) {
           warnings++;
           console.error('Update error:', error);
