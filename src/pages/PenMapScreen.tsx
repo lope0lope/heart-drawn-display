@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useCrocs, useConditionCodes, type CrocRecord } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, sizeBandColor, buildPenGrid } from '@/lib/crocUtils';
 import { matchesConditionFilter, parseConditionCode, extractTypes, extractLocations } from '@/lib/conditionUtils';
+import { penTenure, tenureColor, tenureStats, TENURE_BUCKETS, TENURE_COLORS } from '@/lib/penTenure';
 
 const BATCH_RANGES = [
   { label: 'All Tags', min: 0, max: 999999 },
