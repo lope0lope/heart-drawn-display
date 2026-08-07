@@ -219,6 +219,9 @@ export default function DataUploadScreen() {
           inspection_date: date,
           belly_cm: r.belly_cm,
           condition_codes: condCodes,
+          pen_id: r.pen,
+          line: r.line,
+          pen_slot: r.pen_slot,
         });
       }
       const inspections = [...inspectionMap.values()];
@@ -226,7 +229,7 @@ export default function DataUploadScreen() {
 
       for (let i = 0; i < inspections.length; i += 500) {
         const batch = inspections.slice(i, i + 500);
-        const { error } = await supabase.from('inspections').insert(batch);
+        const { error } = await insertSafe('inspections', batch, INSPECTION_PEN_KEYS);
         if (error) {
           warnings++;
           console.error('Inspection insert error:', error);
