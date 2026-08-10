@@ -497,12 +497,17 @@ export default function FieldCaptureScreen() {
 
         <button
           onClick={commitAll}
-          disabled={!pending.length || committing}
+          disabled={!pending.length || committing || !online}
           className="mt-5 w-full flex items-center justify-center gap-2 bg-ct-good text-background font-mono-ibm text-sm font-semibold tracking-[1.5px] uppercase py-4 rounded-sm hover:opacity-90 active:scale-[.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <CloudUpload className="w-4 h-4" />
-          {committing ? 'Committing…' : `Commit ${pending.length} to Dataset`}
+          {online ? <CloudUpload className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+          {committing
+            ? 'Committing…'
+            : !online
+              ? `${pending.length} queued · waiting for connection`
+              : `Commit ${pending.length} to Dataset`}
         </button>
+
       </div>
     </div>
   );
