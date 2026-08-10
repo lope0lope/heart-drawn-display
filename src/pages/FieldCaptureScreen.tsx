@@ -56,7 +56,9 @@ function newEntry(prev?: Partial<Entry>): Entry {
 }
 
 export default function FieldCaptureScreen() {
-  const { data: conditionCodes = [] } = useConditionCodes();
+  const conditionCodes = useOfflineConditionCodes();
+  const online = useOnlineStatus();
+
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Entry>(() => newEntry());
