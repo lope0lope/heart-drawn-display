@@ -53,33 +53,58 @@ function newEntry(prev?: Partial<Entry>): Entry {
   };
 }
 
-function loadPending(): Entry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch { return []; }
-}
-
-function savePending(list: Entry[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    toast.error('Device storage is full — commit the queue to free space.');
-  }
-}
-
 export default function FieldCaptureScreen() {
   const { data: conditionCodes = [] } = useConditionCodes();
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Entry>(() => newEntry());
-  const [pending, setPending] = useState<Entry[]>(() => loadPending());
+  const [pending, setPending] = useState<Entry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [restored, setRestored] = useState(false);
+  const [persistent, setPersistent] = useState(false);
+  const [usageMb, setUsageMb] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { savePending(pending); }, [pending]);
+  // Restore anything captured before the page/device was closed.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [queue, savedDraft, granted] = await Promise.all([
+        loadPendingEntries<Entry>(),
+        loadDraftEntry<Entry>(),
+        requestPersistentStorage(),
+      ]);
+      if (!alive) return;
+      setPending(queue);
+      if (savedDraft?.id) setDraft(savedDraft);
+      setPersistent(granted);
+      setRestored(true);
+      if (queue.length) {
+        toast.success(`Restored ${queue.length} unsent ${queue.length === 1 ? 'entry' : 'entries'} from this device`);
+      }
+      const est = await getStorageEstimate();
+      if (alive && est) setUsageMb(est.usage / (1024 * 1024));
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Persist the queue on every change (after the initial restore).
+  useEffect(() => {
+    if (!restored) return;
+    savePendingEntries(pending).catch(() => {
+      toast.error('Device storage is full — commit the queue to free space.');
+    });
+    getStorageEstimate().then(est => { if (est) setUsageMb(est.usage / (1024 * 1024)); });
+  }, [pending, restored]);
+
+  // Persist the in-progress entry so a reload mid-capture loses nothing.
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => { saveDraftEntry(draft); }, 400);
+    return () => clearTimeout(t);
+  }, [draft, restored]);
+
 
   const isValid = useMemo(() => {
     const slotN = parseInt(draft.slot, 10);
