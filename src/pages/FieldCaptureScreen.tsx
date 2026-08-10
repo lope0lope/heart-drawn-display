@@ -168,7 +168,12 @@ export default function FieldCaptureScreen() {
 
   const commitAll = useCallback(async () => {
     if (!pending.length) return;
+    if (!navigator.onLine) {
+      toast.error('No connection — the queue stays safely on this device. Commit once you are back online.');
+      return;
+    }
     setCommitting(true);
+
     let inserted = 0, updated = 0, inspections = 0, photos = 0, failed = 0;
     let photoWarning = '';
 
