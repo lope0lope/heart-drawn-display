@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useConditionCodes } from '@/hooks/useCrocs';
+import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive, Wifi, WifiOff } from 'lucide-react';
+
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
