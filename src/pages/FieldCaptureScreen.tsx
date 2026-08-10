@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useConditionCodes } from '@/hooks/useCrocs';
+
 import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
