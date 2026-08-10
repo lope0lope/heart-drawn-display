@@ -280,6 +280,9 @@ export default function FieldCaptureScreen() {
     <div className="max-w-5xl mx-auto space-y-5">
       {/* On-device storage status */}
       <div className="flex flex-wrap items-center gap-2 bg-surface-2/50 border border-border rounded-sm px-3 py-2 font-mono-ibm text-[10px] uppercase tracking-[1.5px] text-ct-text3">
+        {online ? <Wifi className="w-3.5 h-3.5 text-ct-good flex-shrink-0" /> : <WifiOff className="w-3.5 h-3.5 text-ct-warn flex-shrink-0" />}
+        <span className={online ? 'text-ct-good' : 'text-ct-warn'}>{online ? 'Online' : 'Offline — capture continues'}</span>
+        <span className="text-border">·</span>
         <HardDrive className="w-3.5 h-3.5 text-ct-accent flex-shrink-0" />
         <span className="text-ct-text2">
           {restored ? `${pending.length} unsent on this device` : 'Restoring local session…'}
@@ -295,6 +298,14 @@ export default function FieldCaptureScreen() {
         <span className="text-border hidden sm:inline">·</span>
         <span className="hidden sm:inline">Survives page close &amp; device restart</span>
       </div>
+
+      {!online && (
+        <div className="bg-ct-warn/10 border border-ct-warn/40 rounded-sm px-3 py-2 font-mono-ibm text-[11px] text-ct-warn">
+          No connection. Keep capturing — every entry and photo is stored on this tablet and the
+          <span className="font-semibold"> Commit </span> button will sync the whole queue once you are back in coverage.
+        </div>
+      )}
+
 
       {/* Draft form */}
       <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
