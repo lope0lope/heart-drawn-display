@@ -3,15 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useConditionCodes } from '@/hooks/useCrocs';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive } from 'lucide-react';
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
 import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
+import {
+  loadPendingEntries, savePendingEntries, clearPendingEntries,
+  saveDraftEntry, loadDraftEntry, requestPersistentStorage, getStorageEstimate,
+} from '@/lib/captureStore';
 
-const STORAGE_KEY = 'croctrack.field-capture.pending.v2';
 
 const HOUSES = ['GH1', 'GH2'] as const;
 const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
