@@ -157,8 +157,10 @@ export default function FieldCaptureScreen() {
   const clearAll = () => {
     if (!confirm('Discard all pending entries?')) return;
     setPending([]);
+    clearPendingEntries();
     cancelEdit();
   };
+
 
   const commitAll = useCallback(async () => {
     if (!pending.length) return;
