@@ -3,15 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useConditionCodes } from '@/hooks/useCrocs';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive } from 'lucide-react';
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
 import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
+import {
+  loadPendingEntries, savePendingEntries, clearPendingEntries,
+  saveDraftEntry, loadDraftEntry, requestPersistentStorage, getStorageEstimate,
+} from '@/lib/captureStore';
 
-const STORAGE_KEY = 'croctrack.field-capture.pending.v2';
 
 const HOUSES = ['GH1', 'GH2'] as const;
 const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
@@ -50,33 +53,58 @@ function newEntry(prev?: Partial<Entry>): Entry {
   };
 }
 
-function loadPending(): Entry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch { return []; }
-}
-
-function savePending(list: Entry[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    toast.error('Device storage is full — commit the queue to free space.');
-  }
-}
-
 export default function FieldCaptureScreen() {
   const { data: conditionCodes = [] } = useConditionCodes();
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Entry>(() => newEntry());
-  const [pending, setPending] = useState<Entry[]>(() => loadPending());
+  const [pending, setPending] = useState<Entry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [restored, setRestored] = useState(false);
+  const [persistent, setPersistent] = useState(false);
+  const [usageMb, setUsageMb] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { savePending(pending); }, [pending]);
+  // Restore anything captured before the page/device was closed.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [queue, savedDraft, granted] = await Promise.all([
+        loadPendingEntries<Entry>(),
+        loadDraftEntry<Entry>(),
+        requestPersistentStorage(),
+      ]);
+      if (!alive) return;
+      setPending(queue);
+      if (savedDraft?.id) setDraft(savedDraft);
+      setPersistent(granted);
+      setRestored(true);
+      if (queue.length) {
+        toast.success(`Restored ${queue.length} unsent ${queue.length === 1 ? 'entry' : 'entries'} from this device`);
+      }
+      const est = await getStorageEstimate();
+      if (alive && est) setUsageMb(est.usage / (1024 * 1024));
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Persist the queue on every change (after the initial restore).
+  useEffect(() => {
+    if (!restored) return;
+    savePendingEntries(pending).catch(() => {
+      toast.error('Device storage is full — commit the queue to free space.');
+    });
+    getStorageEstimate().then(est => { if (est) setUsageMb(est.usage / (1024 * 1024)); });
+  }, [pending, restored]);
+
+  // Persist the in-progress entry so a reload mid-capture loses nothing.
+  useEffect(() => {
+    if (!restored) return;
+    const t = setTimeout(() => { saveDraftEntry(draft); }, 400);
+    return () => clearTimeout(t);
+  }, [draft, restored]);
+
 
   const isValid = useMemo(() => {
     const slotN = parseInt(draft.slot, 10);
@@ -129,8 +157,10 @@ export default function FieldCaptureScreen() {
   const clearAll = () => {
     if (!confirm('Discard all pending entries?')) return;
     setPending([]);
+    clearPendingEntries();
     cancelEdit();
   };
+
 
   const commitAll = useCallback(async () => {
     if (!pending.length) return;
@@ -238,7 +268,7 @@ export default function FieldCaptureScreen() {
       if (photoWarning) {
         toast.error(`Photos not stored: ${photoWarning}`);
       }
-      if (failed === 0 && !photoWarning) setPending([]);
+      if (failed === 0 && !photoWarning) { setPending([]); await clearPendingEntries(); }
     } catch (err: any) {
       toast.error(`Commit failed: ${err.message ?? err}`);
     } finally {
@@ -248,8 +278,27 @@ export default function FieldCaptureScreen() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
+      {/* On-device storage status */}
+      <div className="flex flex-wrap items-center gap-2 bg-surface-2/50 border border-border rounded-sm px-3 py-2 font-mono-ibm text-[10px] uppercase tracking-[1.5px] text-ct-text3">
+        <HardDrive className="w-3.5 h-3.5 text-ct-accent flex-shrink-0" />
+        <span className="text-ct-text2">
+          {restored ? `${pending.length} unsent on this device` : 'Restoring local session…'}
+        </span>
+        <span className="text-border">·</span>
+        <span>{persistent ? 'Persistent storage granted' : 'Saved in device database'}</span>
+        {usageMb !== null && (
+          <>
+            <span className="text-border">·</span>
+            <span>{usageMb.toFixed(1)} MB used</span>
+          </>
+        )}
+        <span className="text-border hidden sm:inline">·</span>
+        <span className="hidden sm:inline">Survives page close &amp; device restart</span>
+      </div>
+
       {/* Draft form */}
       <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
+
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="font-display text-xl sm:text-2xl text-ct-accent tracking-wider">
