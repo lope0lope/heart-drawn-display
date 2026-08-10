@@ -268,7 +268,7 @@ export default function FieldCaptureScreen() {
       if (photoWarning) {
         toast.error(`Photos not stored: ${photoWarning}`);
       }
-      if (failed === 0 && !photoWarning) setPending([]);
+      if (failed === 0 && !photoWarning) { setPending([]); await clearPendingEntries(); }
     } catch (err: any) {
       toast.error(`Commit failed: ${err.message ?? err}`);
     } finally {
