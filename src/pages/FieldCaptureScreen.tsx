@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useConditionCodes } from '@/hooks/useCrocs';
+
+import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive, Wifi, WifiOff } from 'lucide-react';
+
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
@@ -54,7 +56,9 @@ function newEntry(prev?: Partial<Entry>): Entry {
 }
 
 export default function FieldCaptureScreen() {
-  const { data: conditionCodes = [] } = useConditionCodes();
+  const conditionCodes = useOfflineConditionCodes();
+  const online = useOnlineStatus();
+
   const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Entry>(() => newEntry());
@@ -164,7 +168,12 @@ export default function FieldCaptureScreen() {
 
   const commitAll = useCallback(async () => {
     if (!pending.length) return;
+    if (!navigator.onLine) {
+      toast.error('No connection — the queue stays safely on this device. Commit once you are back online.');
+      return;
+    }
     setCommitting(true);
+
     let inserted = 0, updated = 0, inspections = 0, photos = 0, failed = 0;
     let photoWarning = '';
 
@@ -280,6 +289,9 @@ export default function FieldCaptureScreen() {
     <div className="max-w-5xl mx-auto space-y-5">
       {/* On-device storage status */}
       <div className="flex flex-wrap items-center gap-2 bg-surface-2/50 border border-border rounded-sm px-3 py-2 font-mono-ibm text-[10px] uppercase tracking-[1.5px] text-ct-text3">
+        {online ? <Wifi className="w-3.5 h-3.5 text-ct-good flex-shrink-0" /> : <WifiOff className="w-3.5 h-3.5 text-ct-warn flex-shrink-0" />}
+        <span className={online ? 'text-ct-good' : 'text-ct-warn'}>{online ? 'Online' : 'Offline — capture continues'}</span>
+        <span className="text-border">·</span>
         <HardDrive className="w-3.5 h-3.5 text-ct-accent flex-shrink-0" />
         <span className="text-ct-text2">
           {restored ? `${pending.length} unsent on this device` : 'Restoring local session…'}
@@ -295,6 +307,14 @@ export default function FieldCaptureScreen() {
         <span className="text-border hidden sm:inline">·</span>
         <span className="hidden sm:inline">Survives page close &amp; device restart</span>
       </div>
+
+      {!online && (
+        <div className="bg-ct-warn/10 border border-ct-warn/40 rounded-sm px-3 py-2 font-mono-ibm text-[11px] text-ct-warn">
+          No connection. Keep capturing — every entry and photo is stored on this tablet and the
+          <span className="font-semibold"> Commit </span> button will sync the whole queue once you are back in coverage.
+        </div>
+      )}
+
 
       {/* Draft form */}
       <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
@@ -477,12 +497,17 @@ export default function FieldCaptureScreen() {
 
         <button
           onClick={commitAll}
-          disabled={!pending.length || committing}
+          disabled={!pending.length || committing || !online}
           className="mt-5 w-full flex items-center justify-center gap-2 bg-ct-good text-background font-mono-ibm text-sm font-semibold tracking-[1.5px] uppercase py-4 rounded-sm hover:opacity-90 active:scale-[.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <CloudUpload className="w-4 h-4" />
-          {committing ? 'Committing…' : `Commit ${pending.length} to Dataset`}
+          {online ? <CloudUpload className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+          {committing
+            ? 'Committing…'
+            : !online
+              ? `${pending.length} queued · waiting for connection`
+              : `Commit ${pending.length} to Dataset`}
         </button>
+
       </div>
     </div>
   );
