@@ -89,7 +89,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
           {CROC_ZONES.map(z => {
             const common = {
               className: `${readOnly ? '' : 'cursor-pointer'} fill-ct-accent opacity-0 hover:opacity-30 active:opacity-40 transition-opacity`,
-              onClick: readOnly ? undefined : () => setActiveZone(z.key),
+              onClick: readOnly ? undefined : (e: React.MouseEvent<SVGElement>) => openZone(z.key, e),
             };
             return z.points
               ? <polygon key={z.key} points={z.points} {...common} />
