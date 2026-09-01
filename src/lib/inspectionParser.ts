@@ -25,6 +25,7 @@ export interface ParsedInspectionFile {
 /** Normalise cull field to standard codes: NXT, 1, 2, 3 or empty */
 export function normaliseCull(raw: string): string {
   const v = (raw ?? '').toString().trim().toUpperCase();
+  if (v === 'CULL' || v === 'CULLED') return 'CULLED';
   if (v === 'NXT' || v === 'NEXT' || v === 'NX') return 'NXT';
   if (['1', '2', '3'].includes(v)) return v;
   if (v === '') return '';

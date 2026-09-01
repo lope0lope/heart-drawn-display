@@ -20,7 +20,10 @@ import {
 
 const HOUSES = ['GH1', 'GH2'] as const;
 const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
-const CULL_OPTS = ['', 'NXT', '1', '2', '3'] as const;
+const CULL_OPTS = ['', 'CULLED', 'NXT', '1', '2', '3'] as const;
+const CULL_LABELS: Record<string, string> = {
+  '': '—', CULLED: 'Cull', NXT: 'NXT', '1': '1', '2': '2', '3': '3',
+};
 const GRADES = ['', '1', '2'] as const;
 
 interface Entry {
@@ -189,7 +192,8 @@ export default function FieldCaptureScreen() {
         const slotN = parseInt(e.slot, 10);
         const plainCodes = marksToCodes(e.marks);
         const detailedCodes = e.marks.map(markToString);
-        const cullCode = cullToConditionCode(e.cull);
+        const isCulled = normaliseCull(e.cull) === 'CULLED';
+        const cullCode = isCulled ? null : cullToConditionCode(e.cull);
         const liveCodes = [...plainCodes];
         if (cullCode) liveCodes.push(cullCode);
 
@@ -362,7 +366,7 @@ export default function FieldCaptureScreen() {
           </Field>
           <Field label="Cull">
             <SelectBig value={draft.cull} onChange={v => setDraft(d => ({ ...d, cull: v }))}
-              options={CULL_OPTS.map(c => ({ value: c, label: c || 'None' }))} />
+              options={CULL_OPTS.map(c => ({ value: c, label: CULL_LABELS[c] ?? c }))} />
           </Field>
           <Field label="Date">
             <InputBig type="date" value={draft.date} onChange={v => setDraft(d => ({ ...d, date: v }))} />

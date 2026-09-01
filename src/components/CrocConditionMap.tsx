@@ -20,10 +20,34 @@ interface Props {
  */
 export default function CrocConditionMap({ marks, onChange, conditionCodes, readOnly }: Props) {
   const [activeZone, setActiveZone] = useState<string | null>(null);
+  /** Exact tap point in diagram coordinates, captured on press. */
+  const [tapPoint, setTapPoint] = useState<{ mx: number; my: number } | null>(null);
+
+  const openZone = (zoneKey: string, e: React.MouseEvent<SVGElement>) => {
+    const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as unknown as SVGSVGElement);
+    const r = svg.getBoundingClientRect();
+    if (r.width && r.height) {
+      setTapPoint({
+        mx: ((e.clientX - r.left) / r.width) * CROC_W,
+        my: ((e.clientY - r.top) / r.height) * CROC_H,
+      });
+    } else {
+      setTapPoint(null);
+    }
+    setActiveZone(zoneKey);
+  };
 
   const addMark = (zoneKey: string, c: ConditionCodeRecord) => {
     const zone = ZONE_BY_KEY[zoneKey];
     if (!zone) return;
+    // Pin at the exact press location; nudge repeats so stacked codes stay readable.
+    const base = tapPoint ?? markerPosition(zone);
+    const stacked = marks.filter(
+      m => Math.abs(m.mx - base.mx) < 14 && Math.abs(m.my - base.my) < 14,
+    ).length;
+    const pos = stacked
+      ? { mx: base.mx + Math.cos(stacked) * 20 * stacked, my: base.my + Math.sin(stacked) * 20 * stacked }
+      : base;
     onChange([
       ...marks,
       {
@@ -32,10 +56,12 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
         zoneLabel: zone.label,
         code: c.code,
         name: c.name,
-        ...markerPosition(zone),
+        mx: Math.max(12, Math.min(CROC_W - 12, pos.mx)),
+        my: Math.max(12, Math.min(CROC_H - 12, pos.my)),
       },
     ]);
     setActiveZone(null);
+    setTapPoint(null);
   };
 
   const removeMark = (id: string) => onChange(marks.filter(m => m.id !== id));
@@ -63,7 +89,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
           {CROC_ZONES.map(z => {
             const common = {
               className: `${readOnly ? '' : 'cursor-pointer'} fill-ct-accent opacity-0 hover:opacity-30 active:opacity-40 transition-opacity`,
-              onClick: readOnly ? undefined : () => setActiveZone(z.key),
+              onClick: readOnly ? undefined : (e: React.MouseEvent<SVGElement>) => openZone(z.key, e),
             };
             return z.points
               ? <polygon key={z.key} points={z.points} {...common} />
@@ -117,7 +143,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
       {activeZone && (
         <div
           className="fixed inset-0 z-50 bg-black/65 flex items-end sm:items-center justify-center"
-          onClick={e => { if (e.target === e.currentTarget) setActiveZone(null); }}
+          onClick={e => { if (e.target === e.currentTarget) { setActiveZone(null); setTapPoint(null); }; }}
         >
           <div className="bg-surface border border-border w-full max-w-[440px] max-h-[80vh] overflow-y-auto p-5 rounded-t-xl sm:rounded-xl animate-in slide-in-from-bottom-4 duration-200">
             <h3 className="font-display text-lg text-ct-text">Select Condition</h3>
@@ -137,7 +163,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
               ))}
             </div>
             <button
-              onClick={() => setActiveZone(null)}
+              onClick={() => { setActiveZone(null); setTapPoint(null); }}
               className="w-full mt-4 border border-border text-ct-text3 rounded-sm py-3 font-mono-ibm text-[11px] uppercase tracking-[1.5px] hover:text-ct-text active:scale-[.98]"
             >
               Cancel
