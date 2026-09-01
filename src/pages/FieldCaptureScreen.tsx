@@ -20,7 +20,10 @@ import {
 
 const HOUSES = ['GH1', 'GH2'] as const;
 const LINES = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N'];
-const CULL_OPTS = ['', 'NXT', '1', '2', '3'] as const;
+const CULL_OPTS = ['CULLED', 'NXT', '1', '2', '3'] as const;
+const CULL_LABELS: Record<string, string> = {
+  CULLED: 'Cull now', NXT: 'NXT', '1': '1', '2': '2', '3': '3',
+};
 const GRADES = ['', '1', '2'] as const;
 
 interface Entry {
