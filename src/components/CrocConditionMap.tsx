@@ -20,10 +20,34 @@ interface Props {
  */
 export default function CrocConditionMap({ marks, onChange, conditionCodes, readOnly }: Props) {
   const [activeZone, setActiveZone] = useState<string | null>(null);
+  /** Exact tap point in diagram coordinates, captured on press. */
+  const [tapPoint, setTapPoint] = useState<{ mx: number; my: number } | null>(null);
+
+  const openZone = (zoneKey: string, e: React.MouseEvent<SVGElement>) => {
+    const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as unknown as SVGSVGElement);
+    const r = svg.getBoundingClientRect();
+    if (r.width && r.height) {
+      setTapPoint({
+        mx: ((e.clientX - r.left) / r.width) * CROC_W,
+        my: ((e.clientY - r.top) / r.height) * CROC_H,
+      });
+    } else {
+      setTapPoint(null);
+    }
+    setActiveZone(zoneKey);
+  };
 
   const addMark = (zoneKey: string, c: ConditionCodeRecord) => {
     const zone = ZONE_BY_KEY[zoneKey];
     if (!zone) return;
+    // Pin at the exact press location; nudge repeats so stacked codes stay readable.
+    const base = tapPoint ?? markerPosition(zone);
+    const stacked = marks.filter(
+      m => Math.abs(m.mx - base.mx) < 14 && Math.abs(m.my - base.my) < 14,
+    ).length;
+    const pos = stacked
+      ? { mx: base.mx + Math.cos(stacked) * 20 * stacked, my: base.my + Math.sin(stacked) * 20 * stacked }
+      : base;
     onChange([
       ...marks,
       {
@@ -32,10 +56,12 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
         zoneLabel: zone.label,
         code: c.code,
         name: c.name,
-        ...markerPosition(zone),
+        mx: Math.max(12, Math.min(CROC_W - 12, pos.mx)),
+        my: Math.max(12, Math.min(CROC_H - 12, pos.my)),
       },
     ]);
     setActiveZone(null);
+    setTapPoint(null);
   };
 
   const removeMark = (id: string) => onChange(marks.filter(m => m.id !== id));
