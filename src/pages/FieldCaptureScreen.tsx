@@ -192,7 +192,8 @@ export default function FieldCaptureScreen() {
         const slotN = parseInt(e.slot, 10);
         const plainCodes = marksToCodes(e.marks);
         const detailedCodes = e.marks.map(markToString);
-        const cullCode = cullToConditionCode(e.cull);
+        const isCulled = normaliseCull(e.cull) === 'CULLED';
+        const cullCode = isCulled ? null : cullToConditionCode(e.cull);
         const liveCodes = [...plainCodes];
         if (cullCode) liveCodes.push(cullCode);
 
