@@ -365,7 +365,7 @@ export default function FieldCaptureScreen() {
           </Field>
           <Field label="Cull">
             <SelectBig value={draft.cull} onChange={v => setDraft(d => ({ ...d, cull: v }))}
-              options={CULL_OPTS.map(c => ({ value: c, label: c || 'None' }))} />
+              options={CULL_OPTS.map(c => ({ value: c, label: CULL_LABELS[c] ?? c }))} />
           </Field>
           <Field label="Date">
             <InputBig type="date" value={draft.date} onChange={v => setDraft(d => ({ ...d, date: v }))} />
