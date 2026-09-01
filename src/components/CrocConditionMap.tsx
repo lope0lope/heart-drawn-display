@@ -143,7 +143,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
       {activeZone && (
         <div
           className="fixed inset-0 z-50 bg-black/65 flex items-end sm:items-center justify-center"
-          onClick={e => { if (e.target === e.currentTarget) setActiveZone(null); }}
+          onClick={e => { if (e.target === e.currentTarget) { setActiveZone(null); setTapPoint(null); }; }}
         >
           <div className="bg-surface border border-border w-full max-w-[440px] max-h-[80vh] overflow-y-auto p-5 rounded-t-xl sm:rounded-xl animate-in slide-in-from-bottom-4 duration-200">
             <h3 className="font-display text-lg text-ct-text">Select Condition</h3>
@@ -163,7 +163,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
               ))}
             </div>
             <button
-              onClick={() => setActiveZone(null)}
+              onClick={() => { setActiveZone(null); setTapPoint(null); }}
               className="w-full mt-4 border border-border text-ct-text3 rounded-sm py-3 font-mono-ibm text-[11px] uppercase tracking-[1.5px] hover:text-ct-text active:scale-[.98]"
             >
               Cancel
