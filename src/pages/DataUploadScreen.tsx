@@ -149,7 +149,6 @@ export default function DataUploadScreen() {
           line: r.line,
           pen_slot: r.pen_slot,
           belly_cm: r.belly_cm,
-          grade: r.grade,
           condition_codes: condCodes,
           inspection_date: rowDate,
           cull_schedule: r.cull || null,
@@ -481,7 +480,7 @@ export default function DataUploadScreen() {
             <div className="mt-4">
               <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">Expected format</div>
               <div className="font-mono-ibm text-[10px] text-ct-text2 leading-[1.8] bg-surface-2 p-3 rounded-sm border border-border">
-                Single header row with columns: <strong className="text-ct-accent">House, Pen, Tag, Size, Grading, Date, Condition, Cull</strong>.<br />
+                Single header row with columns: <strong className="text-ct-accent">House, Pen, Tag, Size, Date, Condition, Cull</strong>.<br />
                 One row per croc · House = GH1 or GH2 · Pen = line+slot (e.g. A1, B7) · Condition can be a single code, comma-separated codes, or "Cull".
               </div>
               <div className="font-mono-ibm text-[10px] text-ct-text3 mt-2 leading-[1.8]">
@@ -668,7 +667,7 @@ export default function DataUploadScreen() {
                   <table className="border-collapse text-[11px] w-full">
                     <thead className="sticky top-0">
                       <tr className="bg-surface-3">
-                        {['Row', 'Pen', 'Tag', 'Size', 'Conditions', 'Cull', 'Grade'].map(h => (
+                        {['Row', 'Pen', 'Tag', 'Size', 'Conditions', 'Cull'].map(h => (
                           <th key={h} className="p-[5px_8px] border border-border text-ct-text3 font-mono-ibm text-[9px]">{h}</th>
                         ))}
                       </tr>
@@ -692,7 +691,6 @@ export default function DataUploadScreen() {
                             r.cull === '2' ? 'text-ct-warn' :
                             r.cull === '3' ? 'text-ct-info' : 'text-ct-text3'
                           }`}>{r.cull || '—'}</td>
-                          <td className="p-[5px_8px] border border-border text-ct-text2">{r.grade ?? '—'}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -24,7 +24,6 @@ const CULL_OPTS = ['', 'CULLED', 'NXT', '1', '2', '3'] as const;
 const CULL_LABELS: Record<string, string> = {
   '': '—', CULLED: 'Cull', NXT: 'NXT', '1': '1', '2': '2', '3': '3',
 };
-const GRADES = ['', '1', '2'] as const;
 
 interface Entry {
   id: string;
@@ -33,7 +32,6 @@ interface Entry {
   slot: string;
   tag: string;
   size: string;
-  grade: string;
   date: string; // yyyy-mm-dd
   marks: ConditionMark[];
   photo: string; // compressed jpeg data URL (required)
@@ -49,7 +47,6 @@ function newEntry(prev?: Partial<Entry>): Entry {
     slot: '',
     tag: '',
     size: '',
-    grade: '',
     date: prev?.date ?? new Date().toISOString().slice(0, 10),
     marks: [],
     photo: '',
@@ -203,7 +200,6 @@ export default function FieldCaptureScreen() {
           line: e.line,
           pen_slot: slotN,
           belly_cm: e.size ? parseFloat(e.size) : null,
-          grade: e.grade ? parseInt(e.grade, 10) : null,
           condition_codes: liveCodes,
           inspection_date: e.date,
           cull_schedule: normaliseCull(e.cull) || null,
@@ -360,10 +356,6 @@ export default function FieldCaptureScreen() {
             <InputBig type="number" inputMode="decimal" step="0.1" value={draft.size}
               onChange={v => setDraft(d => ({ ...d, size: v }))} placeholder="e.g. 34" />
           </Field>
-          <Field label="Grading">
-            <SelectBig value={draft.grade} onChange={v => setDraft(d => ({ ...d, grade: v }))}
-              options={GRADES.map(g => ({ value: g, label: g || '—' }))} />
-          </Field>
           <Field label="Cull">
             <SelectBig value={draft.cull} onChange={v => setDraft(d => ({ ...d, cull: v }))}
               options={CULL_OPTS.map(c => ({ value: c, label: CULL_LABELS[c] ?? c }))} />
@@ -480,7 +472,7 @@ export default function FieldCaptureScreen() {
                 ) : (
                   <div className="w-12 h-12 rounded-sm border border-dashed border-border flex items-center justify-center text-[8px] font-mono-ibm text-ct-text3 flex-shrink-0 text-center leading-tight">no<br />photo</div>
                 )}
-                <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs font-mono-ibm">
+                <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono-ibm">
                   <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>
                   <div><span className="text-ct-text3">Tag </span><span className="text-ct-text">{e.tag}</span></div>
                   <div><span className="text-ct-text3">Size </span><span className="text-ct-text">{e.size || '—'} cm</span></div>

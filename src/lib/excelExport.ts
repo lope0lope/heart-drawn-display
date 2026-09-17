@@ -30,7 +30,6 @@ interface EntryRow {
     pen_id: string;
     line: string;
     pen_slot: number;
-    grade: number | null;
     cull_schedule: string | null;
   } | null;
 }
@@ -40,7 +39,7 @@ const sel = (s: string): string => s;
 async function fetchEntries(range: ExportRange): Promise<EntryRow[]> {
   let q = supabase
     .from('inspections')
-    .select(sel('*, crocs!inner(tag, pen_id, line, pen_slot, grade, cull_schedule)'))
+    .select(sel('*, crocs!inner(tag, pen_id, line, pen_slot, cull_schedule)'))
     .order('inspection_date', { ascending: true });
 
   if (range.from) q = q.gte('inspection_date', range.from);
@@ -110,7 +109,6 @@ export async function exportEntriesWorkbook(range: ExportRange): Promise<number>
     Slot: slotOf(r),
     Tag: r.crocs?.tag ?? '',
     'Size (cm)': r.belly_cm ?? '',
-    Grade: r.crocs?.grade ?? '',
     Conditions: conditionsOf(r),
     Cull: r.crocs?.cull_schedule ?? '',
   }));
@@ -137,7 +135,6 @@ export async function exportEntriesWorkbook(range: ExportRange): Promise<number>
     House: c.pen_id,
     Pen: `${c.line}${c.pen_slot}`,
     'Size (cm)': c.belly_cm ?? '',
-    Grade: c.grade ?? '',
     Conditions: Array.isArray(c.condition_codes) ? c.condition_codes.join('; ') : '',
     Cull: c.cull_schedule ?? '',
     'Last Inspection': c.inspection_date ?? '',

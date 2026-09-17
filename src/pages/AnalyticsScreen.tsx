@@ -48,14 +48,6 @@ export default function AnalyticsScreen() {
         }
         case 'Line':
           return filterOp === 'equals' ? c.line === filterValue : c.line !== filterValue;
-        case 'Grade': {
-          const g = c.grade ?? 0;
-          const target = parseInt(filterValue);
-          if (filterOp === 'equals') return g === target;
-          if (filterOp === 'greater than') return g > target;
-          if (filterOp === 'less than') return g < target;
-          return true;
-        }
         default: return true;
       }
     });
@@ -69,7 +61,6 @@ export default function AnalyticsScreen() {
       case 'Pen': return ['GH1', 'GH2'];
       case 'Size Band': return ['0', '1', '2', '3', '4', '5'];
       case 'Line': return [...new Set((allCrocs ?? []).map(c => c.line))].sort();
-      case 'Grade': return ['1', '2', '3', '4', '5'];
       default: return [];
     }
   }, [filterField, conditionDefs, allCrocs]);
@@ -122,7 +113,7 @@ export default function AnalyticsScreen() {
           <div className="flex gap-2 items-center flex-wrap">
             <span className="font-mono-ibm text-[10px] text-ct-text3">WHERE</span>
             <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none" value={filterField} onChange={e => { setFilterField(e.target.value); setFilterValue(''); setQueryApplied(false); }}>
-              {['Condition Code', 'Pen', 'Size Band', 'Line', 'Grade'].map(o => <option key={o}>{o}</option>)}
+              {['Condition Code', 'Pen', 'Size Band', 'Line'].map(o => <option key={o}>{o}</option>)}
             </select>
             <select className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none" value={filterOp} onChange={e => setFilterOp(e.target.value)}>
               {['contains', 'equals', 'greater than', 'less than'].map(o => <option key={o}>{o}</option>)}

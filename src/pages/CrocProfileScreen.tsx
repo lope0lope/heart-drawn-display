@@ -115,7 +115,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
                   {croc.tag ? `#${croc.tag}` : `#${croc.id}`}
                 </div>
                 <div className="font-mono-ibm text-[10px] text-ct-text3 mt-1.5">
-                  {croc.grade ? `GRADE ${croc.grade}` : 'NO GRADE'} · {croc.pen_id} · Line {croc.line}
+                  {croc.pen_id} · Line {croc.line}
                 </div>
                 {croc.condition_codes.length > 0 && (
                   <div className="mt-2.5">

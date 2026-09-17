@@ -106,7 +106,6 @@ export default function CrocDatasetTable() {
       line: c.line,
       pen_slot: c.pen_slot,
       belly_cm: c.belly_cm,
-      grade: c.grade,
       condition_codes: c.condition_codes,
       cull_schedule: c.cull_schedule,
     });
@@ -127,7 +126,6 @@ export default function CrocDatasetTable() {
         line: draft.line,
         pen_slot: Number(draft.pen_slot) || 0,
         belly_cm: draft.belly_cm === null || draft.belly_cm === undefined || draft.belly_cm === ('' as any) ? null : Number(draft.belly_cm),
-        grade: draft.grade === null || draft.grade === undefined || draft.grade === ('' as any) ? null : Number(draft.grade),
         condition_codes: draft.condition_codes ?? [],
         cull_schedule: draft.cull_schedule || null,
       };
@@ -224,7 +222,7 @@ export default function CrocDatasetTable() {
           <table className="border-collapse text-[11px] w-full">
             <thead className="sticky top-0 bg-surface-3 z-10">
               <tr>
-                {['', 'Pen', 'Line', 'Slot', 'Tag', 'Size cm', 'Grade', 'Conditions', 'Cull', 'Actions'].map((h, i) => (
+                {['', 'Pen', 'Line', 'Slot', 'Tag', 'Size cm', 'Conditions', 'Cull', 'Actions'].map((h, i) => (
                   <th key={i} className="p-[6px_8px] border-b border-border text-ct-text3 font-mono-ibm text-[9px] tracking-wider uppercase text-left">{h}</th>
                 ))}
               </tr>
@@ -265,11 +263,6 @@ export default function CrocDatasetTable() {
                       {isEditing
                         ? <input type="number" step="0.1" value={draft.belly_cm ?? ''} onChange={e => setDraft({ ...draft, belly_cm: e.target.value === '' ? null : Number(e.target.value) })} className="bg-surface-3 border border-border text-ct-text px-1 py-px font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[60px]" />
                         : (c.belly_cm ?? '—')}
-                    </td>
-                    <td className="p-[5px_8px] text-ct-text2 font-mono-ibm">
-                      {isEditing
-                        ? <input type="number" value={draft.grade ?? ''} onChange={e => setDraft({ ...draft, grade: e.target.value === '' ? null : Number(e.target.value) })} className="bg-surface-3 border border-border text-ct-text px-1 py-px font-mono-ibm text-[11px] rounded-sm outline-none focus:border-ct-accent w-[50px]" />
-                        : (c.grade ?? '—')}
                     </td>
                     <td className="p-[5px_8px] text-ct-text2 max-w-[200px]">
                       {isEditing ? (
