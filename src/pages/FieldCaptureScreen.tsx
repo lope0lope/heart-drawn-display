@@ -131,7 +131,7 @@ export default function FieldCaptureScreen() {
 
   const saveDraft = useCallback(() => {
     if (!isValid) {
-      toast.error('Fill in House, Line, Slot, Tag and Date first.');
+      toast.error('Fill in House, Line, Pen, Tag and Date first.');
       return;
     }
     if (editingId) {
@@ -348,7 +348,7 @@ export default function FieldCaptureScreen() {
             <SelectBig value={draft.line} onChange={v => setDraft(d => ({ ...d, line: v }))}
               options={LINES.map(l => ({ value: l, label: l }))} />
           </Field>
-          <Field label="Slot">
+          <Field label="Pen">
             <InputBig type="number" inputMode="numeric" min="1" value={draft.slot}
               onChange={v => setDraft(d => ({ ...d, slot: v }))} placeholder="e.g. 12" />
           </Field>
