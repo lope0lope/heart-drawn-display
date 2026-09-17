@@ -3,6 +3,12 @@ import { useConditionCodes, type ConditionCodeRecord } from '@/hooks/useCrocs';
 
 const CODES_KEY = 'croctrack.condition-codes.cache.v1';
 
+function isAllowedCaptureCondition(condition: ConditionCodeRecord): boolean {
+  const code = condition.code.trim().toLowerCase();
+  const name = condition.name.trim().toLowerCase();
+  return code !== 'kk' && !name.startsWith('malnourish');
+}
+
 /** Live online/offline status of the device. */
 export function useOnlineStatus() {
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
@@ -37,10 +43,14 @@ export function useOfflineConditionCodes(): ConditionCodeRecord[] {
 
   useEffect(() => {
     if (data && data.length) {
-      try { localStorage.setItem(CODES_KEY, JSON.stringify(data)); } catch { /* ignore */ }
-      setCached(data);
+      const allowed = data.filter(isAllowedCaptureCondition);
+      try { localStorage.setItem(CODES_KEY, JSON.stringify(allowed)); } catch { /* ignore */ }
+      setCached(allowed);
     }
   }, [data]);
 
-  return useMemo(() => (data && data.length ? data : cached), [data, cached]);
+  return useMemo(
+    () => (data && data.length ? data : cached).filter(isAllowedCaptureCondition),
+    [data, cached],
+  );
 }
