@@ -29,7 +29,7 @@ export async function exportLiveCrocs(penFilter?: string) {
   if (error) throw error;
   if (!data?.length) throw new Error('No records found');
 
-  const headers = ['id', 'tag', 'pen_id', 'line', 'pen_slot', 'belly_cm', 'grade', 'condition_codes', 'inspection_date'];
+  const headers = ['id', 'tag', 'pen_id', 'line', 'pen_slot', 'belly_cm', 'condition_codes', 'inspection_date'];
   const rows = data.map(r => [
     r.id,
     r.tag,
@@ -37,7 +37,6 @@ export async function exportLiveCrocs(penFilter?: string) {
     r.line,
     r.pen_slot,
     r.belly_cm,
-    r.grade,
     Array.isArray(r.condition_codes) ? r.condition_codes.join('; ') : r.condition_codes,
     r.inspection_date,
   ]);

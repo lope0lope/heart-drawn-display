@@ -29,7 +29,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
   const [searchTag, setSearchTag] = useState('');
   const [showOnlyConditions, setShowOnlyConditions] = useState(false);
   const [showEmpty, setShowEmpty] = useState(true);
-  const [gradeFilter, setGradeFilter] = useState<string>('all');
+  const [conditionFilter, setGradeFilter] = useState<string>('all');
   const [batchFilter, setBatchFilter] = useState(0); // index into BATCH_RANGES
 
   const { data: crocs, isLoading } = useCrocs(pen === 'ALL' ? undefined : pen);
@@ -59,7 +59,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
       if (searchTag && c.tag && !c.tag.toLowerCase().includes(searchTag.toLowerCase())) return false;
       if (searchTag && !c.tag) return false;
       if (showOnlyConditions && c.condition_codes.length === 0) return false;
-      if (gradeFilter !== 'all' && !matchesConditionFilter(c.condition_codes, gradeFilter)) return false;
+      if (conditionFilter !== 'all' && !matchesConditionFilter(c.condition_codes, conditionFilter)) return false;
       if (batchFilter > 0 && c.tag) {
         const tagNum = parseInt(c.tag);
         if (isNaN(tagNum) || tagNum < batch.min || tagNum > batch.max) return false;
@@ -67,7 +67,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
       if (batchFilter > 0 && !c.tag) return false;
       return true;
     });
-  }, [crocs, lineFilter, sizeMin, sizeMax, searchTag, showOnlyConditions, gradeFilter, batchFilter]);
+  }, [crocs, lineFilter, sizeMin, sizeMax, searchTag, showOnlyConditions, conditionFilter, batchFilter]);
 
   const highlightedIds = useMemo(() => {
     if (!searchTag) return new Set<number>();
@@ -167,7 +167,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
     setBatchFilter(0);
   };
 
-  const hasActiveFilters = lineFilter !== 'all' || sizeMin || sizeMax || searchTag || showOnlyConditions || !showEmpty || gradeFilter !== 'all' || batchFilter > 0;
+  const hasActiveFilters = lineFilter !== 'all' || sizeMin || sizeMax || searchTag || showOnlyConditions || !showEmpty || conditionFilter !== 'all' || batchFilter > 0;
 
   const handlePrint = () => {
     const win = window.open('', '_blank');
@@ -270,7 +270,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             </div>
             <div>
               <label className="font-mono-ibm text-[9px] text-ct-text3 block mb-1">Condition</label>
-              <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={gradeFilter} onChange={e => setGradeFilter(e.target.value)}>
+              <select className="bg-surface-2 border border-border text-ct-text px-2 py-[5px] font-mono-ibm text-[11px] rounded-sm cursor-pointer outline-none focus:border-ct-accent" value={conditionFilter} onChange={e => setGradeFilter(e.target.value)}>
                 <option value="all">All</option>
                 {conditionFilterGroups.types.length > 0 && (
                   <optgroup label="By Type (e.g. TH, R)">

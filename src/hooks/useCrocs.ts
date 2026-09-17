@@ -7,7 +7,6 @@ export interface CrocRecord {
   tag: string | null;
   line: string;
   belly_cm: number | null;
-  grade: number | null;
   pen_slot: number;
   condition_codes: string[];
   inspection_date: string;

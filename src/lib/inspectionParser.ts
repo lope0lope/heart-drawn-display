@@ -10,7 +10,6 @@ export interface ParsedInspectionRow {
   conditions: string[];
   last_inspected: string;
   cull: string;
-  grade: number | null;
   inspection_date: string;
   /** 1-based source row number for error reporting */
   csvRow: number;
@@ -53,11 +52,6 @@ function parseInteger(v: any): number | null {
   const n = parseNumber(v);
   if (n === null) return null;
   return Math.trunc(n);
-}
-
-function parseGrade(v: any): number | null {
-  const n = parseInteger(v);
-  return n === 1 || n === 2 ? n : null;
 }
 
 const MONTHS: Record<string, string> = {
@@ -142,17 +136,16 @@ const HEADER_ALIASES: Record<string, string[]> = {
   pen: ['pen', 'penslot', 'slot', 'location'],
   tag: ['tag', 'id', 'tagid', 'tag_id'],
   size: ['size', 'cm', 'bellycm', 'belly', 'measurement', 'measure'],
-  grading: ['grading', 'grade', 'gr', 'rating'],
   date: ['date', 'inspectiondate', 'inspected', 'lastinspected'],
   condition: ['condition', 'conditions', 'code', 'codes', 'defect', 'conditioncode'],
   cull: ['cull', 'cullschedule', 'cullcycle'],
 };
 
-/** Strict unified layout: House | Pen | Tag | Size | Grading | Date | Condition | Cull.
- *  Header row must match all 8 columns by alias to avoid latching onto legacy
+/** Strict unified layout: House | Pen | Tag | Size | Date | Condition | Cull.
+ *  Header row must match all 7 columns by alias to avoid latching onto legacy
  *  template sheets that happen to contain a "Pen"/"Tag" pair. */
 function findHeaderRow(rows: any[][]): { idx: number; cols: Record<string, number> } | null {
-  const positionalOrder = ['house', 'pen', 'tag', 'size', 'grading', 'date', 'condition', 'cull'];
+  const positionalOrder = ['house', 'pen', 'tag', 'size', 'date', 'condition', 'cull'];
   for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const row = rows[i] ?? [];
     const keys = row.map(normKey);
@@ -177,7 +170,7 @@ function splitPenCell(raw: string): { line: string; slot: number } | null {
   return { line: m[1].toUpperCase(), slot };
 }
 
-/** Parse the unified flat layout: House | Pen | Tag | Size | Grading | Date | Condition | Cull */
+/** Parse the unified flat layout: House | Pen | Tag | Size | Date | Condition | Cull */
 export async function parseInspectionFile(file: File): Promise<ParsedInspectionFile> {
   const sheets = await readSheets(file);
   const warnings: string[] = [];
@@ -265,7 +258,6 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
         conditions,
         last_inspected: '',
         cull: normaliseCull(cullVal),
-        grade: parseGrade(row[cols.grading]),
         inspection_date: inspISO,
         csvRow: r + 1,
       });
@@ -277,7 +269,7 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
   if (duplicateRows > 0) warnings.push(`${duplicateRows} duplicate row(s) skipped (same House+Pen+Tag+Date)`);
 
   if (!parsedSheet) {
-    warnings.push('Could not find header row. Expected columns: House, Pen, Tag, Size, Grading, Date, Condition, Cull');
+    warnings.push('Could not find header row. Expected columns: House, Pen, Tag, Size, Date, Condition, Cull');
   } else if (all.length === 0) {
     warnings.push('Header row found but no data rows parsed');
   }
