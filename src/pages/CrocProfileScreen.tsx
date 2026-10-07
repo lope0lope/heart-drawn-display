@@ -248,7 +248,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
               <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
                 <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Placement & Pen History</span>
                 {tenureInfo.days !== null && (
-                  <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm" style={{ background: 'rgba(255,255,255,.06)', color: tenureColor(tenureInfo.days) }}>
+                  <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm" style={{ background: 'rgba(0,0,0,.10)', color: tenureColor(tenureInfo.days) }}>
                     {tenureInfo.days} days in current pen{tenureInfo.estimated ? ' (est.)' : ''}
                   </span>
                 )}

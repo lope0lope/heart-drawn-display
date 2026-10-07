@@ -310,31 +310,31 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
         {/* Legend */}
         <div className="flex flex-wrap gap-1.5 mb-2.5">
           {mode === 'condition' && conditionDefs?.map(c => (
-            <div key={c.code} className={`flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border cursor-pointer transition-all select-none ${activeFilters.has(c.code) ? 'border-[rgba(255,255,255,.2)] text-ct-text2' : 'border-[rgba(255,255,255,.06)] text-ct-text3'}`} onClick={() => toggleFilter(c.code)}>
+            <div key={c.code} className={`flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border cursor-pointer transition-all select-none ${activeFilters.has(c.code) ? 'border-[rgba(0,0,0,.22)] text-ct-text2' : 'border-[rgba(0,0,0,.10)] text-ct-text3'}`} onClick={() => toggleFilter(c.code)}>
               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: `hsl(var(${c.color_var}))` }} />
               {c.code} — {c.name}
             </div>
           ))}
           {mode === 'health' && (
             <>
-              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2"><div className="w-2 h-2 rounded-full" style={{ background: '#2e5e32' }} />Healthy</div>
-              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2"><div className="w-2 h-2 rounded-full bg-ct-warn" />Condition flag</div>
-              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2"><div className="w-2 h-2 rounded-full bg-surface-3 opacity-40" />Empty</div>
+              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.22)] text-ct-text2"><div className="w-2 h-2 rounded-full" style={{ background: '#2e5e32' }} />Healthy</div>
+              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.22)] text-ct-text2"><div className="w-2 h-2 rounded-full bg-ct-warn" />Condition flag</div>
+              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.22)] text-ct-text2"><div className="w-2 h-2 rounded-full bg-surface-3 opacity-40" />Empty</div>
             </>
           )}
           {mode === 'size' && SIZE_BANDS.map((b, i) => (
-            <div key={i} className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2">
+            <div key={i} className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.22)] text-ct-text2">
               <div className="w-2 h-2 rounded-full" style={{ background: sizeBandColor(i) }} />{b.range}
             </div>
           ))}
           {mode === 'tenure' && (
             <>
               {TENURE_BUCKETS.map((b, i) => (
-                <div key={b.label} className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.2)] text-ct-text2">
+                <div key={b.label} className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.22)] text-ct-text2">
                   <div className="w-2 h-2 rounded-full" style={{ background: TENURE_COLORS[i] }} />{b.label}
                 </div>
               ))}
-              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(255,255,255,.06)] text-ct-text3">
+              <div className="flex items-center gap-[5px] font-mono-ibm text-[10px] px-2 py-[3px] rounded-sm border border-[rgba(0,0,0,.10)] text-ct-text3">
                 <div className="w-2 h-2 rounded-full" style={{ background: '#565250' }} />Unknown
               </div>
             </>
@@ -403,7 +403,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                     cells.push(
                       <div
                         key={`${line}-${s}`}
-                        className={`w-[22px] h-[22px] rounded-[2px] cursor-pointer transition-transform hover:scale-[1.4] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(255,255,255,.6)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.2] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
+                        className={`w-[22px] h-[22px] rounded-[2px] cursor-pointer transition-transform hover:scale-[1.4] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(0,0,0,.55)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.2] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
                         style={{ background: bg }}
                         onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}\n\nClick to open profile` })}
                         onMouseLeave={() => setTooltip(null)}
@@ -419,7 +419,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
             </div>
           </div>
           {tooltip && (
-            <div className="fixed bg-surface-3 border border-border rounded px-3 py-2 font-mono-ibm text-[11px] text-ct-text pointer-events-none z-[999] max-w-[200px] leading-relaxed shadow-[0_4px_20px_rgba(0,0,0,.6)] whitespace-pre-line" style={{ left: tooltip.x, top: tooltip.y }}>
+            <div className="fixed bg-surface-3 border border-border rounded px-3 py-2 font-mono-ibm text-[11px] text-ct-text pointer-events-none z-[999] max-w-[200px] leading-relaxed shadow-[0_4px_20px_rgba(0,0,0,.18)] whitespace-pre-line" style={{ left: tooltip.x, top: tooltip.y }}>
               {tooltip.text}
             </div>
           )}
@@ -462,7 +462,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
           {lineSummary.map(l => {
             const maxFlagged = Math.max(...lineSummary.map(x => x.flagged), 1);
             return (
-              <div key={l.line} className="flex items-center gap-2 py-1 border-b border-[rgba(255,255,255,.04)] last:border-b-0">
+              <div key={l.line} className="flex items-center gap-2 py-1 border-b border-[rgba(0,0,0,.07)] last:border-b-0">
                 <span className="font-mono-ibm text-[10px] text-ct-accent w-4">{l.line}</span>
                 <div className="flex-1 h-[5px] bg-surface-3 rounded-sm overflow-hidden">
                   <div className="h-full rounded-sm bg-ct-warn" style={{ width: `${(l.flagged / maxFlagged) * 100}%` }} />
@@ -534,7 +534,7 @@ function ConditionBreakdown({ crocs, pen, conditionDefs }: ConditionBreakdownPro
               const color = def ? `hsl(var(${def.color_var}))` : 'hsl(var(--ct-accent))';
               const name = def?.name ?? g.type;
               return (
-                <div key={g.type} className="border-b border-[rgba(255,255,255,.04)] pb-2">
+                <div key={g.type} className="border-b border-[rgba(0,0,0,.07)] pb-2">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-2 h-2 rounded-full" style={{ background: color }} />
                     <span className="font-mono-ibm text-[11px]" style={{ color }}>{g.type}</span>

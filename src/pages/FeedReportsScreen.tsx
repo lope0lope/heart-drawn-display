@@ -140,7 +140,7 @@ export default function FeedReportsScreen() {
                 const delta = prevVal ? ((l.feed_kg - prevVal) / prevVal * 100) : null;
                 const col = delta === null ? 'text-ct-text3' : delta > 0 ? 'text-ct-good' : delta < -5 ? 'text-ct-danger' : 'text-ct-warn';
                 return (
-                  <div key={i} className="grid grid-cols-[60px_80px_1fr_80px_80px] gap-1 items-center py-1.5 border-b border-[rgba(255,255,255,.04)]">
+                  <div key={i} className="grid grid-cols-[60px_80px_1fr_80px_80px] gap-1 items-center py-1.5 border-b border-[rgba(0,0,0,.07)]">
                     <span className="font-mono-ibm text-[11px] text-ct-accent">{l.pen} — {l.line}</span>
                     <span className="text-[11px] text-ct-text2">{l.crocs}</span>
                     <div className="flex items-center gap-1.5">
@@ -194,7 +194,7 @@ export default function FeedReportsScreen() {
             <span>Size Band</span><span className="text-center">Culled</span><span className="text-center">Avg Cycles</span><span className="text-center">Avg Feed/Cycle</span><span className="text-center">Est. Lifetime Feed</span>
           </div>
           {cullData.map((d, i) => (
-            <div key={i} className="grid grid-cols-5 gap-1 items-center py-2 border-b border-[rgba(255,255,255,.04)] text-xs">
+            <div key={i} className="grid grid-cols-5 gap-1 items-center py-2 border-b border-[rgba(0,0,0,.07)] text-xs">
               <span className="font-mono-ibm text-ct-accent">{d.batch}</span>
               <span className="text-center font-mono-ibm text-ct-text2">{d.culled}</span>
               <span className="text-center font-mono-ibm text-ct-text2">{d.avgCycles}</span>
