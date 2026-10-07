@@ -97,7 +97,7 @@ export default function DashboardScreen() {
               <div className="flex-1 h-[9px] bg-surface-3 rounded-sm overflow-hidden">
                 <div className="h-full rounded-sm" style={{ width: `${(bc[i] / maxB) * 100}%`, background: sizeBucketColor(i) }} />
               </div>
-              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: sizeBucketColor(i) }}>{bc[i]}</span>
+              <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: bc[i] ? sizeBucketColor(i) : 'hsl(var(--ct-text3))' }}>{bc[i]}</span>
             </div>
           ))}
         </div>

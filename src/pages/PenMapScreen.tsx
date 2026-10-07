@@ -366,7 +366,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                 <div className="flex-1 h-[9px] bg-surface-3 rounded-sm overflow-hidden">
                   <div className="h-full rounded-sm" style={{ width: `${(tenure.buckets[i] / Math.max(...tenure.buckets, 1)) * 100}%`, background: TENURE_COLORS[i] }} />
                 </div>
-                <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: TENURE_COLORS[i] }}>{tenure.buckets[i]}</span>
+                <span className="font-mono-ibm text-[11px] w-[34px] text-right" style={{ color: tenure.buckets[i] ? TENURE_COLORS[i] : 'hsl(var(--ct-text3))' }}>{tenure.buckets[i]}</span>
               </div>
             ))}
             <div className="font-mono-ibm text-[9px] text-ct-text3 mt-2 leading-[1.7]">
@@ -392,7 +392,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                   const isHighlighted = croc && highlightedIds.has(croc.id);
 
                   if (!croc || croc.belly_cm === null) {
-                    cells.push(<div key={`${line}-${s}`} className={`w-[22px] h-[22px] rounded-[2px] bg-surface-3 ${showEmpty ? 'opacity-20' : 'opacity-5'}`} />);
+                    cells.push(<div key={`${line}-${s}`} className={`w-[22px] h-[22px] rounded-[2px] ${showEmpty ? 'bg-surface-3 border border-border' : 'border border-[rgba(0,0,0,.08)]'}`} />);
                   } else {
                     const bg = getCellColor(croc);
                     const cstr = croc.condition_codes.length ? croc.condition_codes.join(' · ') : 'Clear';
