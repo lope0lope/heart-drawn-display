@@ -38,7 +38,7 @@ export const TENURE_BUCKETS = [
 ];
 
 /** Cold (new) → hot (long-standing) scale, one colour per tenure bucket. */
-export const TENURE_COLORS = ['#2d7dd2', '#1abc9c', '#fdd835', '#fb8c00', '#c62828'];
+export const TENURE_COLORS = ['#2d7dd2', '#0f8a72', '#a8860a', '#c56a00', '#b71c1c'];
 
 export function tenureBucket(days: number): number {
   for (let i = 0; i < TENURE_BUCKETS.length; i++) {

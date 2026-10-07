@@ -9,7 +9,7 @@ export const SIZE_BANDS = [
   { range: '45+ cm', product: 'Full-size luggage', target: 200, min: 46, max: 999 },
 ];
 
-export const SIZE_BAND_COLORS = ['#4a6fa5', '#4a90b8', '#c9a84c', '#d4892a', '#4caf50', '#6b3fa0'];
+export const SIZE_BAND_COLORS = ['#3a5f95', '#2e7fa6', '#a8862f', '#c0781f', '#2f8f3a', '#5e2f96'];
 
 /** Per-cm size buckets: 25, 26, ..., 40, then 40+ (17 entries). */
 export const SIZE_BUCKETS: { range: string; min: number; max: number }[] = [
@@ -24,15 +24,15 @@ export const SIZE_BUCKETS: { range: string; min: number; max: number }[] = [
 export const SIZE_BUCKET_COLORS = [
   '#1f4e8c', // 25
   '#2d7dd2', // 26
-  '#3aa9d4', // 27
-  '#1abc9c', // 28
-  '#2ecc71', // 29
-  '#7cb342', // 30
-  '#c0ca33', // 31
-  '#fdd835', // 32
-  '#fbc02d', // 33
-  '#f9a825', // 34
-  '#fb8c00', // 35
+  '#1a86ad', // 27
+  '#0f8a72', // 28
+  '#1e9e50', // 29
+  '#5c8f1f', // 30
+  '#8f9a12', // 31
+  '#a8860a', // 32
+  '#96700a', // 33
+  '#8a5a08', // 34
+  '#c56a00', // 35
   '#f4511e', // 36
   '#e53935', // 37
   '#d81b60', // 38
