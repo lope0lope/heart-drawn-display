@@ -235,7 +235,6 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
                 <div className="text-xs text-ct-text2 leading-[1.8]">
                   <strong>Location:</strong> {croc.pen_id}, Line {croc.line}, Slot {croc.pen_slot}<br />
                   <strong>Belly measurement:</strong> {croc.belly_cm ?? 'Not measured'} cm<br />
-                  <strong>Grade:</strong> {croc.grade ?? 'Not graded'}<br />
                   <strong>Conditions:</strong> {croc.condition_codes.length > 0 ? croc.condition_codes.join(', ') : 'None'}<br />
                   <strong>Last inspection:</strong> {croc.inspection_date}<br />
                   <strong>Tag:</strong> {croc.tag || 'Not tagged'}

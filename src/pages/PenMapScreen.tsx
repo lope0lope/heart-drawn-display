@@ -405,7 +405,7 @@ export default function PenMapScreen({ onOpenCroc }: PenMapScreenProps = {}) {
                         key={`${line}-${s}`}
                         className={`w-[22px] h-[22px] rounded-[2px] cursor-pointer transition-transform hover:scale-[1.4] hover:z-10 hover:outline hover:outline-1 hover:outline-[rgba(0,0,0,.55)] ${isHighlighted ? 'ring-1 ring-ct-accent scale-[1.2] z-10' : ''} ${dupeCount ? 'ring-1 ring-[rgba(212,137,42,.5)]' : ''}`}
                         style={{ background: bg }}
-                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\nGrade: ${croc.grade ?? '—'}\n${cstr}${dupeNote}\n\nClick to open profile` })}
+                        onMouseEnter={(e) => setTooltip({ x: e.clientX + 14, y: e.clientY - 50, text: `${pen} ${line}${s}\n${tagStr}\nSize: ${croc.belly_cm} cm\n${cstr}${dupeNote}\n\nClick to open profile` })}
                         onMouseLeave={() => setTooltip(null)}
                         onClick={() => {
                           if (onOpenCroc && croc.tag) onOpenCroc(croc.tag);

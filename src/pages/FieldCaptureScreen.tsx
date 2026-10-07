@@ -476,7 +476,6 @@ export default function FieldCaptureScreen() {
                   <div><span className="text-ct-text3">Pen </span><span className="text-ct-accent">{e.house} {e.line}{e.slot}</span></div>
                   <div><span className="text-ct-text3">Tag </span><span className="text-ct-text">{e.tag}</span></div>
                   <div><span className="text-ct-text3">Size </span><span className="text-ct-text">{e.size || '—'} cm</span></div>
-                  <div><span className="text-ct-text3">Gr </span><span className="text-ct-text">{e.grade || '—'}</span></div>
                   <div><span className="text-ct-text3">Cull </span><span className="text-ct-text">{e.cull || '—'}</span></div>
                   <div className="truncate"><span className="text-ct-text3">Cond </span><span className="text-ct-text">{e.marks.map(markToString).join(', ') || '—'}</span></div>
                 </div>
