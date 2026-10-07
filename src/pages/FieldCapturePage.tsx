@@ -2,7 +2,7 @@ import FieldCaptureScreen from './FieldCaptureScreen';
 
 export default function FieldCapturePage() {
   return (
-    <div className="capture-light min-h-[100dvh] bg-background text-foreground flex flex-col">
+    <div className="min-h-[100dvh] bg-background text-foreground flex flex-col">
       <header className="bg-surface border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0">
         <div>
           <div className="font-display text-lg sm:text-xl font-bold text-ct-accent tracking-[2px]">◈ CROCTRACK</div>
