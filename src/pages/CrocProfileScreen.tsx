@@ -235,7 +235,6 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
                 <div className="text-xs text-ct-text2 leading-[1.8]">
                   <strong>Location:</strong> {croc.pen_id}, Line {croc.line}, Slot {croc.pen_slot}<br />
                   <strong>Belly measurement:</strong> {croc.belly_cm ?? 'Not measured'} cm<br />
-                  <strong>Grade:</strong> {croc.grade ?? 'Not graded'}<br />
                   <strong>Conditions:</strong> {croc.condition_codes.length > 0 ? croc.condition_codes.join(', ') : 'None'}<br />
                   <strong>Last inspection:</strong> {croc.inspection_date}<br />
                   <strong>Tag:</strong> {croc.tag || 'Not tagged'}
@@ -248,7 +247,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
               <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
                 <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Placement & Pen History</span>
                 {tenureInfo.days !== null && (
-                  <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm" style={{ background: 'rgba(255,255,255,.06)', color: tenureColor(tenureInfo.days) }}>
+                  <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm" style={{ background: 'rgba(0,0,0,.10)', color: tenureColor(tenureInfo.days) }}>
                     {tenureInfo.days} days in current pen{tenureInfo.estimated ? ' (est.)' : ''}
                   </span>
                 )}
@@ -305,7 +304,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
             <div className="bg-surface border border-border rounded overflow-hidden">
               <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
                 <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Photo History</span>
-                <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">
+                <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.18)] text-ct-accent2">
                   {crocPhotos.length} photo{crocPhotos.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -389,7 +388,7 @@ export default function CrocProfileScreen({ initialSearch }: CrocProfileProps) {
             <div className="bg-surface border border-border rounded overflow-hidden">
               <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
                 <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Feed Consumption — Line {croc.line}</span>
-                <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.15)] text-ct-accent">
+                <span className="inline-block px-2.5 py-0.5 rounded-[10px] text-[10px] font-mono-ibm bg-[rgba(201,168,76,.18)] text-ct-accent2">
                   {crocFeedHistory.length} cycles
                 </span>
               </div>

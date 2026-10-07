@@ -185,7 +185,7 @@ export default function AnalyticsScreen() {
               <span>Pen</span><span>Line</span><span>Slot</span><span>Belly</span><span>Conditions</span>
             </div>
             {filteredCrocs.slice(0, 100).map(c => (
-              <div key={c.id} className="grid grid-cols-[60px_60px_50px_80px_1fr] gap-1 items-center py-1 border-b border-[rgba(255,255,255,.04)] text-[11px]">
+              <div key={c.id} className="grid grid-cols-[60px_60px_50px_80px_1fr] gap-1 items-center py-1 border-b border-[rgba(0,0,0,.07)] text-[11px]">
                 <span className="font-mono-ibm text-ct-accent">{c.pen_id}</span>
                 <span className="text-ct-text2">{c.line}</span>
                 <span className="text-ct-text2">{c.pen_slot}</span>

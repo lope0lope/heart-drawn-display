@@ -6,80 +6,81 @@
 
 @layer base {
   :root {
-    --background: 240 7% 4%;
-    --foreground: 36 33% 92%;
+    /* Daylight palette — legible in direct sun on a farm tablet. */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
 
-    --card: 240 6% 7%;
-    --card-foreground: 36 33% 92%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
 
-    --popover: 240 6% 7%;
-    --popover-foreground: 36 33% 92%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
 
-    --primary: 42 54% 51%;
-    --primary-foreground: 240 7% 4%;
+    --primary: 42 74% 30%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 8% 10%;
-    --secondary-foreground: 36 33% 92%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 0 0% 4%;
 
-    --muted: 240 8% 10%;
-    --muted-foreground: 24 4% 59%;
+    --muted: 220 12% 95%;
+    --muted-foreground: 220 5% 34%;
 
-    --accent: 42 54% 51%;
-    --accent-foreground: 240 7% 4%;
+    --accent: 42 74% 30%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 4 66% 51%;
-    --destructive-foreground: 36 33% 92%;
+    --destructive: 4 72% 38%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 240 12% 18%;
-    --input: 240 12% 18%;
-    --ring: 42 54% 51%;
+    --border: 220 8% 70%;
+    --input: 220 8% 62%;
+    --ring: 42 74% 30%;
 
     --radius: 0.25rem;
 
     /* CrocTrack custom tokens */
-    --surface: 240 6% 7%;
-    --surface2: 240 7% 10%;
-    --surface3: 240 8% 13%;
+    --surface: 0 0% 100%;
+    --surface2: 220 14% 97%;
+    --surface3: 220 12% 93%;
 
-    --ct-accent: 42 54% 51%;
-    --ct-accent2: 39 72% 69%;
-    --ct-accent3: 37 36% 40%;
+    --ct-accent: 42 74% 30%;
+    --ct-accent2: 42 72% 24%;
+    --ct-accent3: 42 45% 38%;
 
-    --ct-text: 36 33% 92%;
-    --ct-text2: 24 4% 59%;
-    --ct-text3: 20 4% 33%;
+    --ct-text: 0 0% 6%;
+    --ct-text2: 220 6% 32%;
+    --ct-text3: 220 5% 42%;
 
-    --ct-good: 122 39% 49%;
-    --ct-warn: 30 66% 50%;
-    --ct-danger: 6 66% 47%;
-    --ct-info: 204 37% 50%;
-    --ct-cull: 268 41% 44%;
+    --ct-good: 130 68% 25%;
+    --ct-warn: 28 92% 33%;
+    --ct-danger: 4 72% 38%;
+    --ct-info: 204 62% 33%;
+    --ct-cull: 268 45% 40%;
 
-    --ct-tag: 42 38% 9%;
+    --ct-tag: 42 62% 92%;
 
-    /* Condition colors */
-    --c-ba: 282 39% 53%;
-    --c-b: 200 13% 55%;
-    --c-ds: 39 72% 69%;
-    --c-hs: 200 15% 38%;
-    --c-pi: 328 81% 52%;
-    --c-po: 14 100% 57%;
-    --c-s: 36 100% 50%;
-    --c-th: 6 66% 47%;
-    --c-r: 340 76% 59%;
-    --c-w: 200 15% 62%;
-    --c-bs: 16 26% 40%;
-    --c-ss: 174 100% 29%;
-    --c-kh: 0 73% 41%;
-    --c-ff: 88 46% 48%;
-    --c-pd: 187 100% 37%;
-    --c-u: 45 100% 51%;
-    --c-c: 232 37% 56%;
-    --c-tb: 10 70% 55%;
-    --c-op: 20 100% 60%;
-    --c-mn: 20 100% 60%;
+    /* Condition colors — darkened so swatches and labels stay readable on white. */
+    --c-ba: 282 45% 42%;
+    --c-b: 200 15% 42%;
+    --c-ds: 38 80% 38%;
+    --c-hs: 200 18% 35%;
+    --c-pi: 328 70% 42%;
+    --c-po: 14 90% 45%;
+    --c-s: 32 95% 38%;
+    --c-th: 6 68% 42%;
+    --c-r: 340 72% 45%;
+    --c-w: 210 12% 40%;
+    --c-bs: 16 30% 36%;
+    --c-ss: 174 70% 26%;
+    --c-kh: 0 70% 38%;
+    --c-ff: 92 55% 30%;
+    --c-pd: 189 80% 30%;
+    --c-u: 44 92% 34%;
+    --c-c: 232 45% 44%;
+    --c-tb: 10 72% 44%;
+    --c-op: 20 95% 40%;
+    --c-mn: 20 95% 40%;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
     --sidebar-primary-foreground: 0 0% 98%;
@@ -87,41 +88,9 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-}
 
-/* High-contrast daylight palette for the standalone field capture tool. */
-.capture-light {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 4%;
-  --card: 0 0% 100%;
-  --card-foreground: 0 0% 4%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 4%;
-  --primary: 42 74% 30%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 96%;
-  --secondary-foreground: 0 0% 4%;
-  --muted: 0 0% 95%;
-  --muted-foreground: 0 0% 30%;
-  --accent: 42 74% 30%;
-  --accent-foreground: 0 0% 100%;
-  --border: 0 0% 62%;
-  --input: 0 0% 62%;
-  --ring: 42 74% 30%;
-  --surface: 0 0% 100%;
-  --surface2: 0 0% 96%;
-  --surface3: 0 0% 91%;
-  --ct-accent: 42 74% 30%;
-  --ct-accent2: 42 72% 24%;
-  --ct-accent3: 42 45% 38%;
-  --ct-text: 0 0% 4%;
-  --ct-text2: 0 0% 22%;
-  --ct-text3: 0 0% 34%;
-  --ct-good: 130 68% 25%;
-  --ct-warn: 28 92% 31%;
-  --ct-danger: 4 72% 38%;
-  color-scheme: light;
+    color-scheme: light;
+  }
 }
 
 @layer base {
@@ -136,7 +105,7 @@
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: hsl(var(--surface)); }
+::-webkit-scrollbar-track { background: hsl(var(--surface2)); }
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 
 /* Font families as utilities */
