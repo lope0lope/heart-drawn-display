@@ -9,7 +9,7 @@ import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, ImagePlus, HardDriv
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
-import { fileToCompressedDataUrl, prepareFilePhoto, dataUrlToBlob } from '@/lib/photoUtils';
+import { prepareFilePhoto, dataUrlToBlob } from '@/lib/photoUtils';
 import OTGCameraCapture from '@/components/OTGCameraCapture';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
