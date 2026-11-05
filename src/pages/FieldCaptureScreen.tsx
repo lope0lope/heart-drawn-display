@@ -4,12 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive, Wifi, WifiOff } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, ImagePlus, HardDrive, Wifi, WifiOff } from 'lucide-react';
 
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
-import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
+import { fileToCompressedDataUrl, prepareFilePhoto, dataUrlToBlob } from '@/lib/photoUtils';
+import OTGCameraCapture from '@/components/OTGCameraCapture';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
 import {
@@ -34,7 +35,9 @@ interface Entry {
   size: string;
   date: string; // yyyy-mm-dd
   marks: ConditionMark[];
-  photo: string; // compressed jpeg data URL (required)
+  photo: string; // small preview for the UI (thumbnails)
+  photoFull: string; // full-resolution source (e.g. 4K OTG camera frame) uploaded for inspection
+  photoRes?: string; // native capture resolution, e.g. "4096 × 3072"
   cull: string;
   createdAt: number;
 }
@@ -50,6 +53,8 @@ function newEntry(prev?: Partial<Entry>): Entry {
     date: prev?.date ?? new Date().toISOString().slice(0, 10),
     marks: [],
     photo: '',
+    photoFull: '',
+    photoRes: undefined,
     cull: '',
     createdAt: Date.now(),
   };
@@ -68,6 +73,7 @@ export default function FieldCaptureScreen() {
   const [restored, setRestored] = useState(false);
   const [persistent, setPersistent] = useState(false);
   const [usageMb, setUsageMb] = useState<number | null>(null);
+  const [camOpen, setCamOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Restore anything captured before the page/device was closed.
@@ -119,11 +125,17 @@ export default function FieldCaptureScreen() {
   const onPickPhoto = async (file?: File) => {
     if (!file) return;
     try {
-      const dataUrl = await fileToCompressedDataUrl(file);
-      setDraft(d => ({ ...d, photo: dataUrl }));
+      // Keep the original capture resolution; only the UI thumbnail is compressed.
+      const { full, preview, width, height } = await prepareFilePhoto(file);
+      setDraft(d => ({ ...d, photo: preview, photoFull: full, photoRes: `${width} × ${height}` }));
     } catch (err: any) {
       toast.error(err.message ?? 'Could not process that photo');
     }
+  };
+
+  const onCameraCapture = (r: { full: string; preview: string; width: number; height: number }) => {
+    setDraft(d => ({ ...d, photo: r.preview, photoFull: r.full, photoRes: `${r.width} × ${r.height}` }));
+    toast.success(`Captured at ${r.width} × ${r.height} — full resolution stored`);
   };
 
   const saveDraft = useCallback(() => {
