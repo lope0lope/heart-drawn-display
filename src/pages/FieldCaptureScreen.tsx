@@ -4,12 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, HardDrive, Wifi, WifiOff } from 'lucide-react';
+import { Trash2, Plus, CloudUpload, Save, Pencil, X, Camera, ImagePlus, HardDrive, Wifi, WifiOff } from 'lucide-react';
 
 import { normaliseCull, cullToConditionCode } from '@/lib/inspectionParser';
 import CrocConditionMap from '@/components/CrocConditionMap';
 import { marksToCodes, markToString, type ConditionMark } from '@/lib/crocZones';
-import { fileToCompressedDataUrl, dataUrlToBlob } from '@/lib/photoUtils';
+import { prepareFilePhoto, dataUrlToBlob } from '@/lib/photoUtils';
+import OTGCameraCapture from '@/components/OTGCameraCapture';
 import { PHOTO_BUCKET } from '@/hooks/useCrocPhotos';
 import { insertSafe, insertOneSafe, updateSafeById, CROC_PLACEMENT_KEYS, INSPECTION_PEN_KEYS } from '@/lib/schemaSafe';
 import {
@@ -34,7 +35,9 @@ interface Entry {
   size: string;
   date: string; // yyyy-mm-dd
   marks: ConditionMark[];
-  photo: string; // compressed jpeg data URL (required)
+  photo: string; // small preview for the UI (thumbnails)
+  photoFull: string; // full-resolution source (e.g. 4K OTG camera frame) uploaded for inspection
+  photoRes?: string; // native capture resolution, e.g. "4096 × 3072"
   cull: string;
   createdAt: number;
 }
@@ -50,6 +53,8 @@ function newEntry(prev?: Partial<Entry>): Entry {
     date: prev?.date ?? new Date().toISOString().slice(0, 10),
     marks: [],
     photo: '',
+    photoFull: '',
+    photoRes: undefined,
     cull: '',
     createdAt: Date.now(),
   };
@@ -68,6 +73,7 @@ export default function FieldCaptureScreen() {
   const [restored, setRestored] = useState(false);
   const [persistent, setPersistent] = useState(false);
   const [usageMb, setUsageMb] = useState<number | null>(null);
+  const [camOpen, setCamOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Restore anything captured before the page/device was closed.
@@ -119,11 +125,17 @@ export default function FieldCaptureScreen() {
   const onPickPhoto = async (file?: File) => {
     if (!file) return;
     try {
-      const dataUrl = await fileToCompressedDataUrl(file);
-      setDraft(d => ({ ...d, photo: dataUrl }));
+      // Keep the original capture resolution; only the UI thumbnail is compressed.
+      const { full, preview, width, height } = await prepareFilePhoto(file);
+      setDraft(d => ({ ...d, photo: preview, photoFull: full, photoRes: `${width} × ${height}` }));
     } catch (err: any) {
       toast.error(err.message ?? 'Could not process that photo');
     }
+  };
+
+  const onCameraCapture = (r: { full: string; preview: string; width: number; height: number }) => {
+    setDraft(d => ({ ...d, photo: r.preview, photoFull: r.full, photoRes: `${r.width} × ${r.height}` }));
+    toast.success(`Captured at ${r.width} × ${r.height} — full resolution stored`);
   };
 
   const saveDraft = useCallback(() => {
@@ -247,11 +259,11 @@ export default function FieldCaptureScreen() {
           if (error) { failed++; console.error(error); }
           else inspections++;
 
-          // Photo evidence
+          // Photo evidence — upload the full-resolution capture, not the UI preview
           if (e.photo) {
             const path = `${e.tag.trim()}/${e.date}-${e.id}.jpg`;
             const up = await supabase.storage.from(PHOTO_BUCKET)
-              .upload(path, dataUrlToBlob(e.photo), { contentType: 'image/jpeg', upsert: true });
+              .upload(path, dataUrlToBlob(e.photoFull || e.photo), { contentType: 'image/jpeg', upsert: true });
             if (up.error) {
               photoWarning = up.error.message;
             } else {
@@ -382,15 +394,26 @@ export default function FieldCaptureScreen() {
           {draft.photo ? (
             <div className="flex items-center gap-3">
               <img src={draft.photo} alt="Captured crocodile" className="w-24 h-24 object-cover rounded-sm border border-border" />
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 items-start">
+                {draft.photoRes && (
+                  <span className="font-mono-ibm text-[10px] text-ct-good uppercase tracking-[1.5px]">
+                    {draft.photoRes} stored full-res
+                  </span>
+                )}
                 <button
-                  onClick={() => fileRef.current?.click()}
+                  onClick={() => setCamOpen(true)}
                   className="font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-accent border border-border rounded-sm px-3 py-2 active:scale-95 hover:border-ct-accent"
                 >
-                  Retake
+                  Retake (camera)
                 </button>
                 <button
-                  onClick={() => setDraft(d => ({ ...d, photo: '' }))}
+                  onClick={() => fileRef.current?.click()}
+                  className="font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-text2 border border-border rounded-sm px-3 py-2 active:scale-95 hover:border-ct-accent"
+                >
+                  Attach file
+                </button>
+                <button
+                  onClick={() => setDraft(d => ({ ...d, photo: '', photoFull: '', photoRes: undefined }))}
                   className="font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-danger px-3 py-2 active:scale-95"
                 >
                   Remove
@@ -398,13 +421,22 @@ export default function FieldCaptureScreen() {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 border border-dashed border-border rounded-sm py-6 text-ct-text2 font-mono-ibm text-xs uppercase tracking-[1.5px] hover:border-ct-accent hover:text-ct-accent active:scale-[.99] transition-all"
-            >
-              <Camera className="w-4 h-4" />
-              Take / attach photo
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setCamOpen(true)}
+                className="flex items-center justify-center gap-2 border border-ct-accent/50 rounded-sm py-6 text-ct-accent font-mono-ibm text-xs uppercase tracking-[1.5px] hover:border-ct-accent hover:bg-ct-accent/5 active:scale-[.99] transition-all"
+              >
+                <Camera className="w-4 h-4" />
+                Use OTG camera
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center justify-center gap-2 border border-dashed border-border rounded-sm py-6 text-ct-text2 font-mono-ibm text-xs uppercase tracking-[1.5px] hover:border-ct-accent hover:text-ct-accent active:scale-[.99] transition-all"
+              >
+                <ImagePlus className="w-4 h-4" />
+                Attach photo file
+              </button>
+            </div>
           )}
         </div>
 
@@ -434,6 +466,14 @@ export default function FieldCaptureScreen() {
           </button>
         </div>
       </div>
+
+      {camOpen && (
+        <OTGCameraCapture
+          onCapture={onCameraCapture}
+          onFallbackFile={f => { onPickPhoto(f); }}
+          onClose={() => setCamOpen(false)}
+        />
+      )}
 
       {/* Pending queue */}
       <div className="bg-surface border border-border rounded-sm p-4 sm:p-6">
