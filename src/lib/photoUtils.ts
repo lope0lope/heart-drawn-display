@@ -59,9 +59,8 @@ export function makeSmallPreview(
 
 /** Legacy helper: compress an attached file for thumbnail use. */
 export async function fileToCompressedDataUrl(file: File): Promise<string> {
-  return drawScaled(await decodeDataUrl(await fileToDataUrl(file)), Number.NaN, 0, MAX_DIM, QUALITY)
-    ? drawScaled(await decodeDataUrl(await fileToDataUrl(file)), 0, 0, MAX_DIM, QUALITY)
-    : '';
+  const img = await decodeDataUrl(await fileToDataUrl(file));
+  return drawScaled(img, img.width, img.height, MAX_DIM, QUALITY);
 }
 
 /**
