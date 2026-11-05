@@ -63,6 +63,15 @@ export async function fileToCompressedDataUrl(file: File): Promise<string> {
   return drawScaled(img, img.width, img.height, MAX_DIM, QUALITY);
 }
 
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = /:(.*?);/.exec(meta)?.[1] ?? 'image/jpeg';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 /**
  * Prepare an attached photo: keep the original data URL as the full-resolution
  * source and build a small preview. Returns the original capture dimensions.
