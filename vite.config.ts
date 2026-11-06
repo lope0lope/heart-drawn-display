@@ -31,6 +31,14 @@ export default defineConfig(({ mode }) => ({
         display: "standalone",
         orientation: "portrait",
         background_color: "#ffffff",
+        // Lets the installed app appear in Android's Share menu, so a photo taken
+        // in a USB camera app can be shared straight into the current entry.
+        share_target: {
+          action: "/share-target",
+          method: "POST",
+          enctype: "multipart/form-data",
+          params: { files: [{ name: "photo", accept: ["image/*", "image/jpeg", "image/png"] }] },
+        },
         theme_color: "#ffffff",
         icons: [
           { src: "/pwa-icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
@@ -39,6 +47,7 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
+        importScripts: ["/share-target-sw.js"],
         globPatterns: ["**/*.{js,css,html,ico,png,jpg,jpeg,svg,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/~oauth/],

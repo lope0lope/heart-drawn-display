@@ -133,6 +133,28 @@ export default function FieldCaptureScreen() {
     }
   };
 
+  // Photo shared in from another app (Android Share menu → CrocTrack).
+  useEffect(() => {
+    if (!restored) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('shared') !== '1' || !('caches' in window)) return;
+    (async () => {
+      try {
+        const cache = await caches.open('shared-photos');
+        const res = await cache.match('/shared-photo');
+        if (!res) return;
+        const blob = await res.blob();
+        const name = decodeURIComponent(res.headers.get('X-File-Name') || 'shared.jpg');
+        await onPickPhoto(new File([blob], name, { type: blob.type || 'image/jpeg' }));
+        await cache.delete('/shared-photo');
+        toast.success('Shared photo attached to this entry');
+      } finally {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored]);
+
   const onCameraCapture = (r: { full: string; preview: string; width: number; height: number }) => {
     setDraft(d => ({ ...d, photo: r.preview, photoFull: r.full, photoRes: `${r.width} × ${r.height}` }));
     toast.success(`Captured at ${r.width} × ${r.height} — full resolution stored`);
@@ -387,7 +409,6 @@ export default function FieldCaptureScreen() {
             ref={fileRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={e => onPickPhoto(e.target.files?.[0] ?? undefined)}
           />
