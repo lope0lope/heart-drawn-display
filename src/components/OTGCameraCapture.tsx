@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Camera, ImagePlus, RefreshCw } from 'lucide-react';
+import { X, Camera, ImagePlus, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Props {
   onCapture: (result: { full: string; preview: string; width: number; height: number }) => void;
@@ -7,141 +7,222 @@ interface Props {
   onClose: () => void;
 }
 
-function friendlyError(err: unknown): string {
-  const name = (err as { name?: string } | null)?.name ?? '';
-  if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Camera permission was denied. Allow camera access, then try again — or attach a photo file instead.';
-  }
-  if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
-    return 'That camera is unavailable. Check the USB connection, refresh the camera list, and select it again.';
-  }
-  if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return 'This camera is already in use by another app. Close it and try again.';
-  }
-  const message = (err as { message?: string } | null)?.message;
-  return message || 'The camera could not be started — attach a photo file instead.';
+/** Resolution ladder: try the Arducam's native mode first, then step down until one opens. */
+const MODES: { label: string; video: MediaTrackConstraints }[] = [
+  { label: '4608 × 2592', video: { width: { ideal: 4608 }, height: { ideal: 2592 } } },
+  { label: '3840 × 2160', video: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
+  { label: '1920 × 1080', video: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
+  { label: '1280 × 720', video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
+  { label: 'Camera default', video: {} },
+];
+
+function errName(err: unknown) {
+  return (err as { name?: string } | null)?.name ?? 'Error';
 }
 
-function preferredExternalCamera(devices: MediaDeviceInfo[]): string {
-  return devices.find(device => /usb|arducam|uvc|external/i.test(device.label))?.deviceId ?? '';
+function friendlyError(err: unknown): string {
+  const name = errName(err);
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Camera permission was blocked. Tap the lock icon next to the web address, allow Camera, then tap refresh. If you opened this inside the Lovable editor, open the published app link directly instead.';
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError' || name === 'AbortError') {
+    return 'The camera is busy. Close any other camera app or browser tab (e.g. webcamtests.com), unplug and replug the USB camera, then tap refresh.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'The selected camera could not be opened. Unplug and replug the USB camera, then tap refresh.';
+  }
+  return (err as { message?: string } | null)?.message || 'The camera could not be started.';
+}
+
+function isExternal(label: string) {
+  return /usb|arducam|uvc|external|webcam|hd camera|camera \d{2,}/i.test(label) &&
+    !/front|back|rear|facing/i.test(label);
+}
+
+function stopStream(s: MediaStream | null) {
+  s?.getTracks().forEach(t => t.stop());
 }
 
 export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const openSeq = useRef(0);
+
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [error, setError] = useState('');
   const [res, setRes] = useState('');
   const [frameRate, setFrameRate] = useState('');
   const [started, setStarted] = useState(false);
-  const [loadingDevices, setLoadingDevices] = useState(true);
+  const [busy, setBusy] = useState(true);
+  const [minMode, setMinMode] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
+  const addLog = useCallback((line: string) => {
+    setLog(prev => [...prev.slice(-40), `${new Date().toLocaleTimeString()}  ${line}`]);
+  }, []);
+
+  const attach = useCallback(async (stream: MediaStream) => {
+    stopStream(streamRef.current);
+    streamRef.current = stream;
+    const video = videoRef.current;
+    if (video) {
+      video.srcObject = stream;
+      await video.play().catch(() => {});
+      // Wait for real frame dimensions.
+      if (!video.videoWidth) {
+        await new Promise<void>(r => {
+          const done = () => r();
+          video.addEventListener('loadedmetadata', done, { once: true });
+          setTimeout(done, 2500);
+        });
+      }
+    }
+    const track = stream.getVideoTracks()[0];
+    const s = track?.getSettings() ?? {};
+    const w = videoRef.current?.videoWidth || s.width;
+    const h = videoRef.current?.videoHeight || s.height;
+    setRes(w && h ? `${w} × ${h}` : '');
+    setFrameRate(s.frameRate ? `${Math.round(s.frameRate)} fps` : '');
+    setStarted(true);
+    setError('');
+    addLog(`Streaming "${track?.label || 'camera'}" at ${w}×${h}`);
+    track?.addEventListener('ended', () => {
+      addLog('Camera disconnected');
+      setStarted(false);
+      setError('The camera stopped. Check the USB cable and tap refresh.');
+    });
+  }, [addLog]);
+
+  /** Open a specific camera, stepping down the resolution ladder until it works. */
+  const openDevice = useCallback(async (deviceId: string, startMode: number) => {
+    const seq = ++openSeq.current;
+    stopStream(streamRef.current);
+    streamRef.current = null;
+    setStarted(false);
+    setBusy(true);
+    setError('');
+    let lastErr: unknown = null;
+    for (let i = startMode; i < MODES.length; i++) {
+      try {
+        addLog(`Opening camera at ${MODES[i].label}…`);
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { ...MODES[i].video, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
+        });
+        if (seq !== openSeq.current) { stopStream(stream); return; }
+        await attach(stream);
+        setBusy(false);
+        return;
+      } catch (err) {
+        lastErr = err;
+        addLog(`Failed at ${MODES[i].label}: ${errName(err)}`);
+        if (errName(err) === 'NotAllowedError') break;
+        // Android sometimes needs a moment to release the USB device.
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+    if (seq === openSeq.current) {
+      setError(friendlyError(lastErr));
+      setBusy(false);
+    }
+  }, [addLog, attach]);
+
+  /** Ask permission (like webcamtests.com does), then list every camera. */
   const refreshDevices = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices.enumerateDevices) {
-      setError('Live camera selection is not supported on this device. Attach a photo file instead.');
-      setLoadingDevices(false);
+    if (!window.isSecureContext) {
+      setError('Cameras only work on a secure (https) address. Open the published app link.');
+      setBusy(false);
       return;
     }
-
-    setLoadingDevices(true);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('This browser does not allow live camera access. Use "Attach photo file".');
+      setBusy(false);
+      return;
+    }
+    setBusy(true);
     setError('');
-    let permissionError: unknown = null;
-    // Camera names are hidden until permission is granted. Try a few gentle
-    // requests; if every one fails we still list whatever devices exist.
-    for (const constraints of [{ video: true }, { video: { width: { ideal: 640 } } }, { video: { facingMode: 'user' } }] as MediaStreamConstraints[]) {
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
-        s.getTracks().forEach(track => track.stop());
-        permissionError = null;
-        break;
-      } catch (err) {
-        permissionError = err;
-        const name = (err as { name?: string })?.name;
-        if (name === 'NotAllowedError' || name === 'SecurityError') break;
-      }
-    }
+    addLog('Requesting camera permission…');
+
+    let permStream: MediaStream | null = null;
     try {
-      const cameras = (await navigator.mediaDevices.enumerateDevices())
-        .filter(device => device.kind === 'videoinput');
-      setDevices(cameras);
-      setSelectedDeviceId(current => {
-        if (current && cameras.some(device => device.deviceId === current)) return current;
-        return preferredExternalCamera(cameras) || (cameras.length === 1 ? cameras[0].deviceId : '');
-      });
-      if (cameras.length === 0) {
-        setError(permissionError
-          ? friendlyError(permissionError)
-          : 'This browser cannot see any camera. If the USB camera works in other apps but not here, the tablet browser does not support USB cameras — take the photo in the USB Camera app and use "Attach photo file".');
-      }
+      permStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      addLog(`Permission granted (${permStream.getVideoTracks()[0]?.label || 'default camera'})`);
     } catch (err) {
-      setError(friendlyError(permissionError ?? err));
-    } finally {
-      setLoadingDevices(false);
+      addLog(`Permission request failed: ${errName(err)}`);
+      if (errName(err) === 'NotAllowedError' || errName(err) === 'SecurityError') {
+        setError(friendlyError(err));
+        setBusy(false);
+        return;
+      }
     }
-  }, []);
+
+    let cams: MediaDeviceInfo[] = [];
+    try {
+      cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    } catch (err) {
+      addLog(`Listing cameras failed: ${errName(err)}`);
+    }
+    addLog(`Found ${cams.length} camera(s): ${cams.map(c => c.label || '(unnamed)').join(', ') || 'none'}`);
+    setDevices(cams);
+
+    const permDeviceId = permStream?.getVideoTracks()[0]?.getSettings().deviceId ?? '';
+    const external = cams.find(c => isExternal(c.label));
+    const pick =
+      (selectedDeviceId && cams.some(c => c.deviceId === selectedDeviceId) && selectedDeviceId) ||
+      external?.deviceId ||
+      (cams.length ? cams[cams.length - 1].deviceId : '') || // USB cameras are usually listed last
+      permDeviceId;
+
+    // Release the permission stream before opening the chosen camera so
+    // the USB device isn't held twice.
+    stopStream(permStream);
+    await new Promise(r => setTimeout(r, 300));
+
+    if (cams.length === 0 && !permStream) {
+      setError('No camera is visible to the browser yet. Replug the USB camera, accept the "use external device" prompt, then tap refresh.');
+      setBusy(false);
+      return;
+    }
+    setSelectedDeviceId(pick);
+    setMinMode(0);
+    await openDevice(pick, 0);
+  }, [addLog, openDevice, selectedDeviceId]);
 
   useEffect(() => {
     void refreshDevices();
-    const onChange = () => void refreshDevices();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onChange = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        addLog('Camera plugged in / removed — updating list');
+        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        setDevices(cams);
+      }, 600);
+    };
     navigator.mediaDevices?.addEventListener?.('devicechange', onChange);
     return () => {
+      clearTimeout(t);
       navigator.mediaDevices?.removeEventListener?.('devicechange', onChange);
-      streamRef.current?.getTracks().forEach(track => track.stop());
+      openSeq.current++;
+      stopStream(streamRef.current);
     };
-  }, [refreshDevices]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => {
-    let alive = true;
-    streamRef.current?.getTracks().forEach(track => track.stop());
-    streamRef.current = null;
-    setStarted(false);
-    setRes('');
-    setFrameRate('');
+  const chooseDevice = (id: string) => {
+    setSelectedDeviceId(id);
+    setMinMode(0);
+    void openDevice(id, 0);
+  };
 
-    if (!selectedDeviceId) return () => { alive = false; };
-
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { exact: selectedDeviceId },
-            width: { ideal: 4608 },
-            height: { ideal: 2592 },
-            aspectRatio: { ideal: 16 / 9 },
-            frameRate: { ideal: 15 },
-          },
-          audio: false,
-        });
-        if (!alive) {
-          stream.getTracks().forEach(track => track.stop());
-          return;
-        }
-        streamRef.current = stream;
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        await video.play().catch(() => {});
-        const track = stream.getVideoTracks()[0];
-        const settings = track?.getSettings();
-        const width = settings?.width ?? video.videoWidth;
-        const height = settings?.height ?? video.videoHeight;
-        if (width && height) setRes(`${width} × ${height}`);
-        if (settings?.frameRate) setFrameRate(`${Math.round(settings.frameRate)} fps`);
-        setStarted(true);
-        setError('');
-      } catch (err) {
-        if (alive) setError(friendlyError(err));
-      }
-    })();
-
-    return () => {
-      alive = false;
-      streamRef.current?.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    };
-  }, [selectedDeviceId]);
+  const lowerResolution = () => {
+    const next = Math.min(MODES.length - 1, minMode + 1);
+    setMinMode(next);
+    void openDevice(selectedDeviceId, next);
+  };
 
   const capture = () => {
     const video = videoRef.current;
@@ -151,30 +232,29 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     const fullCanvas = document.createElement('canvas');
     fullCanvas.width = width;
     fullCanvas.height = height;
-    const context = fullCanvas.getContext('2d');
-    if (!context) return;
-    context.drawImage(video, 0, 0, width, height);
+    const ctx = fullCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
     const full = fullCanvas.toDataURL('image/jpeg', 0.92);
 
     const scale = Math.min(1, 1000 / Math.max(width, height));
-    const previewCanvas = document.createElement('canvas');
-    previewCanvas.width = Math.round(width * scale);
-    previewCanvas.height = Math.round(height * scale);
-    const previewContext = previewCanvas.getContext('2d');
-    if (!previewContext) return;
-    previewContext.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
-    const preview = previewCanvas.toDataURL('image/jpeg', 0.62);
-    onCapture({ full, preview, width, height });
+    const pc = document.createElement('canvas');
+    pc.width = Math.round(width * scale);
+    pc.height = Math.round(height * scale);
+    const pctx = pc.getContext('2d');
+    if (!pctx) return;
+    pctx.drawImage(video, 0, 0, pc.width, pc.height);
+    onCapture({ full, preview: pc.toDataURL('image/jpeg', 0.62), width, height });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 flex flex-col" role="dialog" aria-label="Camera capture">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col" role="dialog" aria-label="Camera capture">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface flex-shrink-0">
         <div>
-          <div className="font-display text-lg text-ct-accent">Select camera</div>
+          <div className="font-display text-lg text-ct-accent">Camera</div>
           <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase mt-0.5">
-            Requested mode: 4608 × 2592 at 15 fps
+            USB / OTG camera supported
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-ct-text2 hover:text-ct-text active:scale-95" aria-label="Close camera">
@@ -185,25 +265,24 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-3">
         <select
           value={selectedDeviceId}
-          onChange={e => setSelectedDeviceId(e.target.value)}
+          onChange={e => chooseDevice(e.target.value)}
           aria-label="Camera"
           className="h-12 min-w-0 flex-1 rounded-sm border border-border bg-background px-3 font-mono-ibm text-xs text-foreground"
         >
-          <option value="">{loadingDevices ? 'Finding cameras…' : devices.length ? 'Choose a camera' : 'No cameras found'}</option>
-          {devices.map((device, index) => (
-            <option key={device.deviceId || index} value={device.deviceId}>
-              {device.label || `Camera ${index + 1}`}
+          {devices.length === 0 && <option value={selectedDeviceId}>{busy ? 'Finding cameras…' : 'No cameras listed'}</option>}
+          {devices.map((d, i) => (
+            <option key={d.deviceId || i} value={d.deviceId}>
+              {(d.label || `Camera ${i + 1}`) + (isExternal(d.label) ? '  (USB)' : '')}
             </option>
           ))}
         </select>
         <button
           onClick={() => void refreshDevices()}
-          disabled={loadingDevices}
+          disabled={busy}
           className="flex h-12 w-12 flex-shrink-0 items-center justify-center border border-border text-ct-text2 disabled:opacity-50"
           aria-label="Refresh camera list"
-          title="Refresh camera list"
         >
-          <RefreshCw className={`h-4 w-4 ${loadingDevices ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
@@ -217,56 +296,79 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         />
         {!started && !error && (
           <div className="px-6 text-center font-mono-ibm text-xs uppercase text-ct-text3">
-            {selectedDeviceId ? 'Connecting to selected camera…' : 'Choose the USB camera above'}
+            {busy ? 'Connecting to camera… accept any permission prompts' : 'Choose a camera above'}
           </div>
         )}
         {error && (
           <div className="mx-4 max-w-md text-center">
             <div className="font-mono-ibm text-xs leading-relaxed text-ct-warn">{error}</div>
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="mt-4 inline-flex items-center gap-2 border border-border px-4 py-3 font-mono-ibm text-[11px] uppercase text-ct-accent"
-            >
-              <ImagePlus className="h-4 w-4" /> Attach photo file
-            </button>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <button
+                onClick={() => void refreshDevices()}
+                className="inline-flex items-center gap-2 border border-border px-4 py-3 font-mono-ibm text-[11px] uppercase text-ct-text2"
+              >
+                <RefreshCw className="h-4 w-4" /> Try again
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="inline-flex items-center gap-2 border border-border px-4 py-3 font-mono-ibm text-[11px] uppercase text-ct-accent"
+              >
+                <ImagePlus className="h-4 w-4" /> Attach photo file
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {started && (
-        <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
-          <div className="mb-3 flex flex-wrap items-center justify-center gap-2 font-mono-ibm text-[10px] uppercase text-ct-text3">
-            <span className="text-ct-accent">Active stream: {res || 'resolution unknown'}</span>
-            {frameRate && <span>· {frameRate}</span>}
-          </div>
-          <p className="mb-3 text-center font-mono-ibm text-[10px] leading-relaxed text-ct-text3">
-            If the preview is green, this browser may not decode the camera’s MJPEG stream. The browser does not expose a control to select MJPEG encoding.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center justify-center gap-2 border border-border px-4 py-4 font-mono-ibm text-[11px] uppercase text-ct-text2"
-            >
-              <ImagePlus className="h-4 w-4" />
-              <span className="hidden sm:inline">Attach file</span>
-            </button>
-            <button
-              onClick={capture}
-              className="flex flex-1 items-center justify-center gap-2 rounded-sm bg-ct-accent py-4 font-mono-ibm text-sm font-semibold uppercase text-background transition-all hover:bg-ct-accent2 active:scale-[.98]"
-            >
-              <Camera className="h-4 w-4" /> Capture photo
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
+        {started && (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-center gap-2 font-mono-ibm text-[10px] uppercase text-ct-text3">
+              <span className="text-ct-accent">Active: {res || 'resolution unknown'}</span>
+              {frameRate && <span>· {frameRate}</span>}
+              {minMode < MODES.length - 1 && (
+                <button onClick={lowerResolution} className="underline text-ct-text2">
+                  Picture green or frozen? Try lower resolution
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center justify-center gap-2 border border-border px-4 py-4 font-mono-ibm text-[11px] uppercase text-ct-text2"
+              >
+                <ImagePlus className="h-4 w-4" />
+                <span className="hidden sm:inline">Attach file</span>
+              </button>
+              <button
+                onClick={capture}
+                className="flex flex-1 items-center justify-center gap-2 rounded-sm bg-ct-accent py-4 font-mono-ibm text-sm font-semibold uppercase text-background active:scale-[.98]"
+              >
+                <Camera className="h-4 w-4" /> Capture photo
+              </button>
+            </div>
+          </>
+        )}
+        <button
+          onClick={() => setShowLog(v => !v)}
+          className="mt-2 flex w-full items-center justify-center gap-1 font-mono-ibm text-[10px] uppercase text-ct-text3"
+        >
+          Camera details {showLog ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+        {showLog && (
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap border border-border bg-background p-2 font-mono-ibm text-[10px] text-ct-text2">
+            {log.join('\n') || 'No events yet'}
+          </pre>
+        )}
+      </div>
 
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={event => {
-          const file = event.target.files?.[0];
+        onChange={e => {
+          const file = e.target.files?.[0];
           if (file) onFallbackFile(file);
           onClose();
         }}
