@@ -9,7 +9,7 @@ interface Props {
 
 /** Resolution ladder: try the Arducam's native mode first, then step down until one opens. */
 const MODES: { label: string; video: MediaTrackConstraints }[] = [
-  { label: '4608 × 2592', video: { width: { ideal: 4608 }, height: { ideal: 2592 } } },
+  { label: '4608 × 2592', video: { width: { ideal: 4608 }, height: { ideal: 2592 }, frameRate: { ideal: 15 } } },
   { label: '3840 × 2160', video: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
   { label: '1920 × 1080', video: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
   { label: '1280 × 720', video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
@@ -96,6 +96,76 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     });
   }, [addLog]);
 
+  const [photoMax, setPhotoMax] = useState('');
+  const [sensorMax, setSensorMax] = useState('');
+
+  /**
+   * Push the open stream to the highest resolution the camera reports.
+   * Android Chrome often starts USB cameras at 640×480 even when asked for
+   * more, so we read the real capabilities and step through exact sizes.
+   */
+  const upgradeResolution = useCallback(async (stream: MediaStream) => {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    const caps = (track.getCapabilities?.() ?? {}) as MediaTrackCapabilities;
+    const maxW = caps.width?.max ?? 0;
+    const maxH = caps.height?.max ?? 0;
+    if (maxW && maxH) setSensorMax(`${maxW} × ${maxH}`);
+    addLog(`Camera reports max ${maxW || '?'}×${maxH || '?'}, fps ${caps.frameRate?.min ?? '?'}–${caps.frameRate?.max ?? '?'}`);
+
+    // Still-photo resolution (often higher than the live preview).
+    try {
+      const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { getPhotoCapabilities(): Promise<{ imageWidth?: { max?: number }; imageHeight?: { max?: number } }> } }).ImageCapture;
+      if (IC) {
+        const pc = await new IC(track).getPhotoCapabilities();
+        if (pc.imageWidth?.max && pc.imageHeight?.max) {
+          setPhotoMax(`${pc.imageWidth.max} × ${pc.imageHeight.max}`);
+          addLog(`Still-photo max ${pc.imageWidth.max}×${pc.imageHeight.max}`);
+        }
+      }
+    } catch (err) {
+      addLog(`Photo capabilities unavailable: ${errName(err)}`);
+    }
+
+    const sizes: [number, number][] = [
+      [4608, 2592], [4056, 3040], [4000, 3000], [3840, 2160], [3264, 2448],
+      [2592, 1944], [2560, 1440], [1920, 1080], [1600, 1200], [1280, 720],
+    ];
+    if (maxW && maxH && !sizes.some(([w, h]) => w === maxW && h === maxH)) sizes.unshift([maxW, maxH]);
+    const candidates = sizes.filter(([w, h]) => !maxW || (w <= maxW && h <= maxH));
+    const current = () => {
+      const st = track.getSettings();
+      return (st.width ?? 0) * (st.height ?? 0);
+    };
+    for (const [w, h] of candidates) {
+      if (w * h <= current()) break;
+      for (const fps of [{ max: 15 }, { max: 10 }, { max: 5 }, undefined]) {
+        try {
+          await track.applyConstraints({
+            width: { exact: w },
+            height: { exact: h },
+            ...(fps ? { frameRate: fps } : {}),
+          });
+          await new Promise(r => setTimeout(r, 700));
+          const st = track.getSettings();
+          const vw = videoRef.current?.videoWidth || st.width;
+          const vh = videoRef.current?.videoHeight || st.height;
+          addLog(`Applied ${w}×${h}${fps ? ` @≤${fps.max}fps` : ''} → now ${vw}×${vh}`);
+          if (st.width === w && st.height === h) {
+            setRes(`${vw} × ${vh}`);
+            setFrameRate(st.frameRate ? `${Math.round(st.frameRate)} fps` : '');
+            return;
+          }
+        } catch (err) {
+          addLog(`Rejected ${w}×${h}${fps ? ` @≤${fps.max}fps` : ''}: ${errName(err)}`);
+        }
+      }
+    }
+    const st = track.getSettings();
+    setRes(st.width && st.height ? `${st.width} × ${st.height}` : '');
+    setFrameRate(st.frameRate ? `${Math.round(st.frameRate)} fps` : '');
+  }, [addLog]);
+
   /** Open a specific camera, stepping down the resolution ladder until it works. */
   const openDevice = useCallback(async (deviceId: string, startMode: number) => {
     const seq = ++openSeq.current;
@@ -114,6 +184,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         });
         if (seq !== openSeq.current) { stopStream(stream); return; }
         await attach(stream);
+        if (i === 0) await upgradeResolution(stream);
         setBusy(false);
         return;
       } catch (err) {
@@ -128,7 +199,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       setError(friendlyError(lastErr));
       setBusy(false);
     }
-  }, [addLog, attach]);
+  }, [addLog, attach, upgradeResolution]);
 
   /** Ask permission (like webcamtests.com does), then list every camera. */
   const refreshDevices = useCallback(async () => {
@@ -224,28 +295,67 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     void openDevice(selectedDeviceId, next);
   };
 
-  const capture = () => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
-    const width = video.videoWidth;
-    const height = video.videoHeight;
-    const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = width;
-    fullCanvas.height = height;
-    const ctx = fullCanvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, width, height);
-    const full = fullCanvas.toDataURL('image/jpeg', 0.92);
-
+  const finish = (full: string, width: number, height: number, source: CanvasImageSource) => {
     const scale = Math.min(1, 1000 / Math.max(width, height));
     const pc = document.createElement('canvas');
     pc.width = Math.round(width * scale);
     pc.height = Math.round(height * scale);
     const pctx = pc.getContext('2d');
     if (!pctx) return;
-    pctx.drawImage(video, 0, 0, pc.width, pc.height);
+    pctx.drawImage(source, 0, 0, pc.width, pc.height);
     onCapture({ full, preview: pc.toDataURL('image/jpeg', 0.62), width, height });
     onClose();
+  };
+
+  const captureFromVideo = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    const c = document.createElement('canvas');
+    c.width = width;
+    c.height = height;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+    finish(c.toDataURL('image/jpeg', 0.92), width, height, c);
+  };
+
+  const [capturing, setCapturing] = useState(false);
+
+  /** Prefer the browser's still-photo API (full sensor resolution), fall back to a video frame. */
+  const capture = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    const video = videoRef.current;
+    const IC = (window as unknown as { ImageCapture?: new (t: MediaStreamTrack) => { getPhotoCapabilities(): Promise<{ imageWidth?: { max?: number }; imageHeight?: { max?: number } }>; takePhoto(o?: { imageWidth?: number; imageHeight?: number }): Promise<Blob> } }).ImageCapture;
+    if (track && IC && video) {
+      setCapturing(true);
+      try {
+        const ic = new IC(track);
+        const pc = await ic.getPhotoCapabilities().catch(() => null);
+        const opts = pc?.imageWidth?.max && pc?.imageHeight?.max
+          ? { imageWidth: pc.imageWidth.max, imageHeight: pc.imageHeight.max }
+          : undefined;
+        const blob = await ic.takePhoto(opts);
+        const bmp = await createImageBitmap(blob);
+        addLog(`Still photo ${bmp.width}×${bmp.height}`);
+        if (bmp.width * bmp.height >= video.videoWidth * video.videoHeight) {
+          const full = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = reject;
+            r.readAsDataURL(blob);
+          });
+          finish(full, bmp.width, bmp.height, bmp);
+          return;
+        }
+      } catch (err) {
+        addLog(`Still photo failed (${errName(err)}), using video frame`);
+      } finally {
+        setCapturing(false);
+      }
+    }
+    captureFromVideo();
   };
 
   return (
@@ -326,6 +436,8 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
             <div className="mb-2 flex flex-wrap items-center justify-center gap-2 font-mono-ibm text-[10px] uppercase text-ct-text3">
               <span className="text-ct-accent">Active: {res || 'resolution unknown'}</span>
               {frameRate && <span>· {frameRate}</span>}
+              {sensorMax && <span>· camera max {sensorMax}</span>}
+              {photoMax && <span>· photo {photoMax}</span>}
               {minMode < MODES.length - 1 && (
                 <button onClick={lowerResolution} className="underline text-ct-text2">
                   Picture green or frozen? Try lower resolution
@@ -341,10 +453,11 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
                 <span className="hidden sm:inline">Attach file</span>
               </button>
               <button
-                onClick={capture}
+                onClick={() => void capture()}
+                disabled={capturing || busy}
                 className="flex flex-1 items-center justify-center gap-2 rounded-sm bg-ct-accent py-4 font-mono-ibm text-sm font-semibold uppercase text-background active:scale-[.98]"
               >
-                <Camera className="h-4 w-4" /> Capture photo
+                <Camera className="h-4 w-4" /> {capturing ? 'Capturing…' : busy ? 'Optimising…' : 'Capture photo'}
               </button>
             </div>
           </>
