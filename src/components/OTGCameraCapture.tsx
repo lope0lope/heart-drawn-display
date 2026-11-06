@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Camera, ImagePlus } from 'lucide-react';
-
-/**
- * Live OTG / USB camera capture modal.
- *
- * Requests the highest resolution the camera exposes (Arducam 12MP UVC
- * modules expose up to 4096×3072; typical phones/tablets give up to 4K) and
- * grabs full frames at the sensor's native output, so stored photos keep
- * their full resolution for later inspection.
- */
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Camera, ImagePlus, RefreshCw } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Props {
   onCapture: (result: { full: string; preview: string; width: number; height: number }) => void;
@@ -17,41 +15,85 @@ interface Props {
 }
 
 function friendlyError(err: unknown): string {
-  const name = (err as any)?.name ?? '';
+  const name = (err as { name?: string } | null)?.name ?? '';
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Camera permission was denied. Allow camera access for this app, then try again — or attach a photo file instead.';
+    return 'Camera permission was denied. Allow camera access, then try again — or attach a photo file instead.';
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
-    return 'No camera was found. Check the OTG/USB camera is connected, then try again — or attach a photo file instead.';
+    return 'That camera is unavailable. Check the USB connection, refresh the camera list, and select it again.';
   }
   if (name === 'NotReadableError' || name === 'TrackStartError') {
-    return 'The camera is already in use by another app. Close it and try again.';
+    return 'This camera is already in use by another app. Close it and try again.';
   }
-  const msg = (err as any)?.message ?? '';
-  return msg || 'The camera could not be started — attach a photo file instead.';
+  const message = (err as { message?: string } | null)?.message;
+  return message || 'The camera could not be started — attach a photo file instead.';
+}
+
+function preferredExternalCamera(devices: MediaDeviceInfo[]): string {
+  return devices.find(device => /usb|arducam|uvc|external/i.test(device.label))?.deviceId ?? '';
 }
 
 export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [error, setError] = useState('');
-  const [res, setRes] = useState<string>('');
-  const [maxRes, setMaxRes] = useState<string>('');
-  const [started, setStarted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [error, setError] = useState('');
+  const [res, setRes] = useState('');
+  const [maxRes, setMaxRes] = useState('');
+  const [started, setStarted] = useState(false);
+  const [loadingDevices, setLoadingDevices] = useState(true);
+
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices.enumerateDevices) {
+      setError('Live camera selection is not supported on this device. Attach a photo file instead.');
+      setLoadingDevices(false);
+      return;
+    }
+
+    setLoadingDevices(true);
+    setError('');
+    try {
+      // Camera labels are hidden until permission is granted. This temporary
+      // stream is only used to unlock device names; it is never shown or captured.
+      const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      permissionStream.getTracks().forEach(track => track.stop());
+      const cameras = (await navigator.mediaDevices.enumerateDevices())
+        .filter(device => device.kind === 'videoinput');
+      setDevices(cameras);
+      setSelectedDeviceId(current => {
+        if (current && cameras.some(device => device.deviceId === current)) return current;
+        return preferredExternalCamera(cameras);
+      });
+      if (cameras.length === 0) setError('No cameras found. Check the USB camera connection and refresh the list.');
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setLoadingDevices(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDevices();
+    return () => streamRef.current?.getTracks().forEach(track => track.stop());
+  }, [refreshDevices]);
 
   useEffect(() => {
     let alive = true;
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    setStarted(false);
+    setRes('');
+    setMaxRes('');
+
+    if (!selectedDeviceId) return () => { alive = false; };
+
     (async () => {
       try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw Object.assign(new Error('Live camera is not supported on this device.'), { name: 'Unsupported' });
-        }
-        // Ask for the largest frame the sensor offers; the browser picks the
-        // closest available mode (4096×3072 for 12MP UVC, 4K on most tablets).
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: 'environment' },
+            deviceId: { exact: selectedDeviceId },
             width: { ideal: 4096 },
             height: { ideal: 3072 },
             frameRate: { ideal: 15 },
@@ -59,63 +101,59 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
           audio: false,
         });
         if (!alive) {
-          stream.getTracks().forEach(t => t.stop());
+          stream.getTracks().forEach(track => track.stop());
           return;
         }
         streamRef.current = stream;
-        const v = videoRef.current;
-        if (!v) return;
-        v.srcObject = stream;
-        await v.play().catch(() => {});
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play().catch(() => {});
         const track = stream.getVideoTracks()[0];
-        const s: any = track?.getSettings?.() ?? {};
-        const w = s.width ?? v.videoWidth;
-        const h = s.height ?? v.videoHeight;
-        setRes(w && h ? `${w} × ${h}` : '');
-        const caps: any = track?.getCapabilities?.() ?? {};
-        if (caps.width?.max && caps.height?.max) {
-          setMaxRes(`up to ${caps.width.max} × ${caps.height.max}`);
+        const settings = track?.getSettings();
+        const width = settings?.width ?? video.videoWidth;
+        const height = settings?.height ?? video.videoHeight;
+        if (width && height) setRes(`${width} × ${height}`);
+        const capabilities = track?.getCapabilities?.();
+        if (capabilities?.width?.max && capabilities?.height?.max) {
+          setMaxRes(`up to ${capabilities.width.max} × ${capabilities.height.max}`);
         }
         setStarted(true);
+        setError('');
       } catch (err) {
         if (alive) setError(friendlyError(err));
       }
     })();
+
     return () => {
       alive = false;
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current?.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [selectedDeviceId]);
 
   const capture = () => {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth) return;
-    const w = v.videoWidth;
-    const h = v.videoHeight;
-
-    // Full-resolution frame: native sensor output, high-quality JPEG.
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const width = video.videoWidth;
+    const height = video.videoHeight;
     const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = w;
-    fullCanvas.height = h;
-    const ctx = fullCanvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(v, 0, 0, w, h);
+    fullCanvas.width = width;
+    fullCanvas.height = height;
+    const context = fullCanvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(video, 0, 0, width, height);
     const full = fullCanvas.toDataURL('image/jpeg', 0.92);
 
-    // Small preview for the entry form / queue thumbnails.
-    const scale = Math.min(1, 1000 / Math.max(w, h));
-    const pw = Math.round(w * scale);
-    const ph = Math.round(h * scale);
-    const prevCanvas = document.createElement('canvas');
-    prevCanvas.width = pw;
-    prevCanvas.height = ph;
-    const pctx = prevCanvas.getContext('2d');
-    if (!pctx) return;
-    pctx.drawImage(v, 0, 0, pw, ph);
-    const preview = prevCanvas.toDataURL('image/jpeg', 0.62);
-
-    onCapture({ full, preview, width: w, height: h });
+    const scale = Math.min(1, 1000 / Math.max(width, height));
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = Math.round(width * scale);
+    previewCanvas.height = Math.round(height * scale);
+    const previewContext = previewCanvas.getContext('2d');
+    if (!previewContext) return;
+    previewContext.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+    const preview = previewCanvas.toDataURL('image/jpeg', 0.62);
+    onCapture({ full, preview, width, height });
     onClose();
   };
 
@@ -123,9 +161,9 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     <div className="fixed inset-0 z-50 bg-background/95 flex flex-col" role="dialog" aria-label="Camera capture">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface flex-shrink-0">
         <div>
-          <div className="font-display text-lg text-ct-accent tracking-wider">Live Camera</div>
-          <div className="font-mono-ibm text-[9px] text-ct-text3 uppercase tracking-[2px] mt-0.5">
-            OTG / USB camera · full resolution
+          <div className="font-display text-lg text-ct-accent">Select camera</div>
+          <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase mt-0.5">
+            Choose the connected USB camera
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-ct-text2 hover:text-ct-text active:scale-95" aria-label="Close camera">
@@ -133,28 +171,51 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         </button>
       </div>
 
-      <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center">
+      <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-3">
+        <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+          <SelectTrigger className="h-12 min-w-0 flex-1 rounded-sm border-border font-mono-ibm text-xs">
+            <SelectValue placeholder={loadingDevices ? 'Finding cameras…' : 'Choose a camera'} />
+          </SelectTrigger>
+          <SelectContent>
+            {devices.map((device, index) => (
+              <SelectItem key={device.deviceId} value={device.deviceId}>
+                {device.label || `Camera ${index + 1}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          onClick={() => void refreshDevices()}
+          disabled={loadingDevices}
+          className="flex h-12 w-12 flex-shrink-0 items-center justify-center border border-border text-ct-text2 disabled:opacity-50"
+          aria-label="Refresh camera list"
+          title="Refresh camera list"
+        >
+          <RefreshCw className={`h-4 w-4 ${loadingDevices ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="flex-1 relative min-h-0 overflow-hidden bg-muted flex items-center justify-center">
         <video
           ref={videoRef}
           playsInline
           muted
           autoPlay
-          className={`w-full h-full object-contain ${started ? '' : 'hidden'}`}
+          className={`h-full w-full object-contain ${started ? '' : 'hidden'}`}
         />
         {!started && !error && (
-          <div className="text-ct-text3 font-mono-ibm text-xs uppercase tracking-[2px] animate-pulse">
-            Starting camera…
+          <div className="px-6 text-center font-mono-ibm text-xs uppercase text-ct-text3">
+            {selectedDeviceId ? 'Connecting to selected camera…' : 'Choose the USB camera above'}
           </div>
         )}
         {error && (
-          <div className="max-w-md mx-4 text-center">
-            <div className="text-ct-warn font-mono-ibm text-xs leading-relaxed">{error}</div>
+          <div className="mx-4 max-w-md text-center">
+            <div className="font-mono-ibm text-xs leading-relaxed text-ct-warn">{error}</div>
             <button
               onClick={() => fileRef.current?.click()}
-              className="mt-4 inline-flex items-center gap-2 border border-border rounded-sm px-4 py-2.5 font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-accent hover:border-ct-accent active:scale-95"
+              className="mt-4 inline-flex items-center gap-2 border border-border px-4 py-3 font-mono-ibm text-[11px] uppercase text-ct-accent"
             >
-              <ImagePlus className="w-4 h-4" />
-              Attach photo file
+              <ImagePlus className="h-4 w-4" /> Attach photo file
             </button>
           </div>
         )}
@@ -162,24 +223,23 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
 
       {started && (
         <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
-          <div className="flex items-center justify-center gap-2 font-mono-ibm text-[10px] text-ct-text3 uppercase tracking-[2px] mb-3">
-            <span className="text-ct-accent">{res || 'Resolution unknown'}</span>
-            {maxRes && <span>· sensor {maxRes}</span>}
+          <div className="mb-3 flex flex-wrap items-center justify-center gap-2 font-mono-ibm text-[10px] uppercase text-ct-text3">
+            <span className="text-ct-accent">Captured at {res || 'resolution unknown'}</span>
+            {maxRes && <span>· camera {maxRes}</span>}
           </div>
           <div className="flex gap-3">
             <button
               onClick={() => fileRef.current?.click()}
-              className="flex items-center justify-center gap-2 border border-border rounded-sm px-4 py-4 font-mono-ibm text-[11px] uppercase tracking-[1.5px] text-ct-text2 hover:border-ct-accent active:scale-95"
+              className="flex items-center justify-center gap-2 border border-border px-4 py-4 font-mono-ibm text-[11px] uppercase text-ct-text2"
             >
-              <ImagePlus className="w-4 h-4" />
+              <ImagePlus className="h-4 w-4" />
               <span className="hidden sm:inline">Attach file</span>
             </button>
             <button
               onClick={capture}
-              className="flex-1 flex items-center justify-center gap-2 bg-ct-accent text-background font-mono-ibm text-sm font-semibold tracking-[1.5px] uppercase py-4 rounded-sm hover:bg-ct-accent2 active:scale-[.98] transition-all"
+              className="flex flex-1 items-center justify-center gap-2 rounded-sm bg-ct-accent py-4 font-mono-ibm text-sm font-semibold uppercase text-background transition-all hover:bg-ct-accent2 active:scale-[.98]"
             >
-              <Camera className="w-4 h-4" />
-              Capture photo
+              <Camera className="h-4 w-4" /> Capture photo
             </button>
           </div>
         </div>
@@ -190,9 +250,9 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={e => {
-          const f = e.target.files?.[0];
-          if (f) onFallbackFile(f);
+        onChange={event => {
+          const file = event.target.files?.[0];
+          if (file) onFallbackFile(file);
           onClose();
         }}
       />
