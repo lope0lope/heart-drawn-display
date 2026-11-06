@@ -32,9 +32,16 @@ export function useCrocPhotos(crocId?: number, tag?: string | null) {
         .order('inspection_date', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data ?? []) as CrocPhotoRecord[];
+      return await Promise.all((data ?? []).map(async row => {
+        if (!row.storage_path) return row as unknown as CrocPhotoRecord;
+        const { data: signed, error: signError } = await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(row.storage_path, 3600);
+        if (signError) throw signError;
+        return { ...row, photo_url: signed.signedUrl } as unknown as CrocPhotoRecord;
+      }));
     },
     enabled: !!(crocId || tag),
     retry: false,
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
   });
 }

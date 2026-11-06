@@ -1,5 +1,5 @@
 # Project rules
 
-- Until a verified data migration, existing farm-data imports resolve to the legacy-data client via matching Vite and TypeScript aliases; leave generated Cloud integration files untouched to avoid redirecting production data to an empty database.
+- Farm imports resolve to the Cloud data adapter through matching Vite/TypeScript aliases; keep generated integration files untouched. Account-free reads use RLS, while writes pass through a connection-key-checked function so public clients cannot alter farm data directly.
 
-- External capture apps write through the `ingest-capture` edge function (x-api-key auth, client_id idempotency via `capture_ingest_log`); keep its commit logic in sync with `FieldCaptureScreen.commitAll` so both paths store identical data.
+- External apps and Field Capture both commit through `ingest-capture` with x-api-key auth and transactional client_id idempotency; one commit path prevents drift. Store original photo bytes privately and resolve temporary signed URLs for viewing.
