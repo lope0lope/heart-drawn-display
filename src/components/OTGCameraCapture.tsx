@@ -41,7 +41,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [error, setError] = useState('');
   const [res, setRes] = useState('');
-  const [maxRes, setMaxRes] = useState('');
+  const [frameRate, setFrameRate] = useState('');
   const [started, setStarted] = useState(false);
   const [loadingDevices, setLoadingDevices] = useState(true);
 
@@ -85,7 +85,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     streamRef.current = null;
     setStarted(false);
     setRes('');
-    setMaxRes('');
+    setFrameRate('');
 
     if (!selectedDeviceId) return () => { alive = false; };
 
@@ -94,8 +94,9 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             deviceId: { exact: selectedDeviceId },
-            width: { ideal: 4096 },
-            height: { ideal: 3072 },
+            width: { ideal: 4608 },
+            height: { ideal: 2592 },
+            aspectRatio: { ideal: 16 / 9 },
             frameRate: { ideal: 15 },
           },
           audio: false,
@@ -114,10 +115,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         const width = settings?.width ?? video.videoWidth;
         const height = settings?.height ?? video.videoHeight;
         if (width && height) setRes(`${width} × ${height}`);
-        const capabilities = track?.getCapabilities?.();
-        if (capabilities?.width?.max && capabilities?.height?.max) {
-          setMaxRes(`up to ${capabilities.width.max} × ${capabilities.height.max}`);
-        }
+        if (settings?.frameRate) setFrameRate(`${Math.round(settings.frameRate)} fps`);
         setStarted(true);
         setError('');
       } catch (err) {
@@ -163,7 +161,7 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
         <div>
           <div className="font-display text-lg text-ct-accent">Select camera</div>
           <div className="font-mono-ibm text-[10px] text-ct-text3 uppercase mt-0.5">
-            Choose the connected USB camera
+            Requested mode: 4608 × 2592 at 15 fps
           </div>
         </div>
         <button onClick={onClose} className="p-2 text-ct-text2 hover:text-ct-text active:scale-95" aria-label="Close camera">
@@ -224,9 +222,12 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       {started && (
         <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
           <div className="mb-3 flex flex-wrap items-center justify-center gap-2 font-mono-ibm text-[10px] uppercase text-ct-text3">
-            <span className="text-ct-accent">Captured at {res || 'resolution unknown'}</span>
-            {maxRes && <span>· camera {maxRes}</span>}
+            <span className="text-ct-accent">Active stream: {res || 'resolution unknown'}</span>
+            {frameRate && <span>· {frameRate}</span>}
           </div>
+          <p className="mb-3 text-center font-mono-ibm text-[10px] leading-relaxed text-ct-text3">
+            If the preview is green, this browser may not decode the camera’s MJPEG stream. The browser does not expose a control to select MJPEG encoding.
+          </p>
           <div className="flex gap-3">
             <button
               onClick={() => fileRef.current?.click()}
