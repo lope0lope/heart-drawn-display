@@ -56,7 +56,8 @@ function frameLooksBroken(video: HTMLVideoElement): 'green' | 'blank' | null {
     if (l < min) min = l;
     if (l > max) max = l;
   }
-  if (green / n > 0.85) return 'green';
+  // A failed decode is a flat, uniform green; real scenes have detail.
+  if (green / n > 0.9 && max - min < 40) return 'green';
   if (dark / n > 0.97 || max - min < 6) return 'blank';
   return null;
 }
