@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Camera, ImagePlus, RefreshCw } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 interface Props {
   onCapture: (result: { full: string; preview: string; width: number; height: number }) => void;
@@ -54,21 +47,36 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
 
     setLoadingDevices(true);
     setError('');
+    let permissionError: unknown = null;
+    // Camera names are hidden until permission is granted. Try a few gentle
+    // requests; if every one fails we still list whatever devices exist.
+    for (const constraints of [{ video: true }, { video: { width: { ideal: 640 } } }, { video: { facingMode: 'user' } }] as MediaStreamConstraints[]) {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ ...constraints, audio: false });
+        s.getTracks().forEach(track => track.stop());
+        permissionError = null;
+        break;
+      } catch (err) {
+        permissionError = err;
+        const name = (err as { name?: string })?.name;
+        if (name === 'NotAllowedError' || name === 'SecurityError') break;
+      }
+    }
     try {
-      // Camera labels are hidden until permission is granted. This temporary
-      // stream is only used to unlock device names; it is never shown or captured.
-      const permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      permissionStream.getTracks().forEach(track => track.stop());
       const cameras = (await navigator.mediaDevices.enumerateDevices())
         .filter(device => device.kind === 'videoinput');
       setDevices(cameras);
       setSelectedDeviceId(current => {
         if (current && cameras.some(device => device.deviceId === current)) return current;
-        return preferredExternalCamera(cameras);
+        return preferredExternalCamera(cameras) || (cameras.length === 1 ? cameras[0].deviceId : '');
       });
-      if (cameras.length === 0) setError('No cameras found. Check the USB camera connection and refresh the list.');
+      if (cameras.length === 0) {
+        setError(permissionError
+          ? friendlyError(permissionError)
+          : 'This browser cannot see any camera. If the USB camera works in other apps but not here, the tablet browser does not support USB cameras — take the photo in the USB Camera app and use "Attach photo file".');
+      }
     } catch (err) {
-      setError(friendlyError(err));
+      setError(friendlyError(permissionError ?? err));
     } finally {
       setLoadingDevices(false);
     }
@@ -76,7 +84,12 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
 
   useEffect(() => {
     void refreshDevices();
-    return () => streamRef.current?.getTracks().forEach(track => track.stop());
+    const onChange = () => void refreshDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange);
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onChange);
+      streamRef.current?.getTracks().forEach(track => track.stop());
+    };
   }, [refreshDevices]);
 
   useEffect(() => {
@@ -170,18 +183,19 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       </div>
 
       <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-3">
-        <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-          <SelectTrigger className="h-12 min-w-0 flex-1 rounded-sm border-border font-mono-ibm text-xs">
-            <SelectValue placeholder={loadingDevices ? 'Finding cameras…' : 'Choose a camera'} />
-          </SelectTrigger>
-          <SelectContent>
-            {devices.map((device, index) => (
-              <SelectItem key={device.deviceId} value={device.deviceId}>
-                {device.label || `Camera ${index + 1}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <select
+          value={selectedDeviceId}
+          onChange={e => setSelectedDeviceId(e.target.value)}
+          aria-label="Camera"
+          className="h-12 min-w-0 flex-1 rounded-sm border border-border bg-background px-3 font-mono-ibm text-xs text-foreground"
+        >
+          <option value="">{loadingDevices ? 'Finding cameras…' : devices.length ? 'Choose a camera' : 'No cameras found'}</option>
+          {devices.map((device, index) => (
+            <option key={device.deviceId || index} value={device.deviceId}>
+              {device.label || `Camera ${index + 1}`}
+            </option>
+          ))}
+        </select>
         <button
           onClick={() => void refreshDevices()}
           disabled={loadingDevices}
