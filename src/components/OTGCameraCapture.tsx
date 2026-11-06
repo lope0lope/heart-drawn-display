@@ -7,14 +7,64 @@ interface Props {
   onClose: () => void;
 }
 
-/** Resolution ladder: try the Arducam's native mode first, then step down until one opens. */
-const MODES: { label: string; video: MediaTrackConstraints }[] = [
-  { label: '4608 × 2592', video: { width: { ideal: 4608 }, height: { ideal: 2592 }, frameRate: { ideal: 15 } } },
-  { label: '3840 × 2160', video: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
-  { label: '1920 × 1080', video: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
-  { label: '1280 × 720', video: { width: { ideal: 1280 }, height: { ideal: 720 } } },
-  { label: 'Camera default', video: {} },
+/**
+ * Mode ladder. Each entry pins resolution AND frame rate exactly — USB
+ * cameras like the Arducam only deliver 4608×2592 at ≤15 fps; letting the
+ * browser pick 30 fps at that size produces a green, undecodable stream.
+ */
+type Mode = { label: string; w?: number; h?: number; fps?: number; fpsMax?: boolean };
+const MODES: Mode[] = [
+  { label: '4608 × 2592 @ 15fps', w: 4608, h: 2592, fps: 15 },
+  { label: '4608 × 2592 @ ≤15fps', w: 4608, h: 2592, fps: 15, fpsMax: true },
+  { label: '4608 × 2592 @ 10fps', w: 4608, h: 2592, fps: 10 },
+  { label: '4608 × 2592 @ 5fps', w: 4608, h: 2592, fps: 5 },
+  { label: '3840 × 2160 @ 15fps', w: 3840, h: 2160, fps: 15 },
+  { label: '3840 × 2160 @ 30fps', w: 3840, h: 2160, fps: 30 },
+  { label: '3840 × 2160 @ 10fps', w: 3840, h: 2160, fps: 10 },
+  { label: '2560 × 1440 @ 15fps', w: 2560, h: 1440, fps: 15 },
+  { label: '1920 × 1080 @ 30fps', w: 1920, h: 1080, fps: 30 },
+  { label: '1280 × 720', w: 1280, h: 720 },
+  { label: 'Camera default' },
 ];
+
+function modeConstraints(m: Mode): MediaTrackConstraints {
+  const c: MediaTrackConstraints = {};
+  if (m.w && m.h) { c.width = { exact: m.w }; c.height = { exact: m.h }; }
+  if (m.fps) c.frameRate = m.fpsMax ? { max: m.fps } : { exact: m.fps };
+  return c;
+}
+
+/**
+ * Sample a frame and report whether it looks broken: solid green
+ * (failed MJPEG/YUV decode) or completely black/blank.
+ */
+function frameLooksBroken(video: HTMLVideoElement): 'green' | 'blank' | null {
+  if (!video.videoWidth) return 'blank';
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 36;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, 64, 36);
+  const d = ctx.getImageData(0, 0, 64, 36).data;
+  let green = 0, dark = 0, min = 255, max = 0;
+  const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    if (g > 60 && g > r * 1.8 && g > b * 1.8) green++;
+    if (r + g + b < 24) dark++;
+    const l = r + g + b;
+    if (l < min) min = l;
+    if (l > max) max = l;
+  }
+  // A failed decode is a flat, uniform green; real scenes have detail.
+  if (green / n > 0.9 && max - min < 40) return 'green';
+  if (dark / n > 0.97 || max - min < 6) return 'blank';
+  return null;
+}
+
+async function waitForFrames(video: HTMLVideoElement, ms: number) {
+  await new Promise(r => setTimeout(r, ms));
+}
 
 function errName(err: unknown) {
   return (err as { name?: string } | null)?.name ?? 'Error';
@@ -127,40 +177,6 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       addLog(`Photo capabilities unavailable: ${errName(err)}`);
     }
 
-    const sizes: [number, number][] = [
-      [4608, 2592], [4056, 3040], [4000, 3000], [3840, 2160], [3264, 2448],
-      [2592, 1944], [2560, 1440], [1920, 1080], [1600, 1200], [1280, 720],
-    ];
-    if (maxW && maxH && !sizes.some(([w, h]) => w === maxW && h === maxH)) sizes.unshift([maxW, maxH]);
-    const candidates = sizes.filter(([w, h]) => !maxW || (w <= maxW && h <= maxH));
-    const current = () => {
-      const st = track.getSettings();
-      return (st.width ?? 0) * (st.height ?? 0);
-    };
-    for (const [w, h] of candidates) {
-      if (w * h <= current()) break;
-      for (const fps of [{ max: 15 }, { max: 10 }, { max: 5 }, undefined]) {
-        try {
-          await track.applyConstraints({
-            width: { exact: w },
-            height: { exact: h },
-            ...(fps ? { frameRate: fps } : {}),
-          });
-          await new Promise(r => setTimeout(r, 700));
-          const st = track.getSettings();
-          const vw = videoRef.current?.videoWidth || st.width;
-          const vh = videoRef.current?.videoHeight || st.height;
-          addLog(`Applied ${w}×${h}${fps ? ` @≤${fps.max}fps` : ''} → now ${vw}×${vh}`);
-          if (st.width === w && st.height === h) {
-            setRes(`${vw} × ${vh}`);
-            setFrameRate(st.frameRate ? `${Math.round(st.frameRate)} fps` : '');
-            return;
-          }
-        } catch (err) {
-          addLog(`Rejected ${w}×${h}${fps ? ` @≤${fps.max}fps` : ''}: ${errName(err)}`);
-        }
-      }
-    }
     const st = track.getSettings();
     setRes(st.width && st.height ? `${st.width} × ${st.height}` : '');
     setFrameRate(st.frameRate ? `${Math.round(st.frameRate)} fps` : '');
@@ -175,25 +191,55 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
     setBusy(true);
     setError('');
     let lastErr: unknown = null;
+    let sawBroken = false;
     for (let i = startMode; i < MODES.length; i++) {
+      const mode = MODES[i];
       try {
-        addLog(`Opening camera at ${MODES[i].label}…`);
+        addLog(`Trying ${mode.label}…`);
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { ...MODES[i].video, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
+          video: { ...modeConstraints(mode), ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
         });
         if (seq !== openSeq.current) { stopStream(stream); return; }
         await attach(stream);
+        const st = stream.getVideoTracks()[0]?.getSettings() ?? {};
+        addLog(`Opened ${st.width}×${st.height} @ ${st.frameRate ? Math.round(st.frameRate) : '?'}fps — checking picture…`);
+        const video = videoRef.current;
+        let verdict: 'green' | 'blank' | null = null;
+        if (video) {
+          // Give the camera time to warm up: first frames are often green.
+          for (let k = 0; k < 4; k++) {
+            await waitForFrames(video, 700);
+            verdict = frameLooksBroken(video);
+            if (!verdict) break;
+          }
+        }
+        if (seq !== openSeq.current) return;
+        if (verdict) {
+          sawBroken = true;
+          addLog(`Picture is ${verdict} at ${mode.label} — trying next mode`);
+          stopStream(stream);
+          streamRef.current = null;
+          setStarted(false);
+          await new Promise(r => setTimeout(r, 400));
+          continue;
+        }
+        setMinMode(i);
+        addLog(`✓ Good picture at ${mode.label}`);
         if (i === 0) await upgradeResolution(stream);
         setBusy(false);
         return;
       } catch (err) {
         lastErr = err;
-        addLog(`Failed at ${MODES[i].label}: ${errName(err)}`);
+        addLog(`Rejected ${mode.label}: ${errName(err)}`);
         if (errName(err) === 'NotAllowedError') break;
-        // Android sometimes needs a moment to release the USB device.
         await new Promise(r => setTimeout(r, 400));
       }
+    }
+    if (sawBroken && seq === openSeq.current && !lastErr) {
+      setError('The camera only produced a green or blank picture in every mode. Replug the camera and tap Try again, or use "Attach photo file".');
+      setBusy(false);
+      return;
     }
     if (seq === openSeq.current) {
       setError(friendlyError(lastErr));
