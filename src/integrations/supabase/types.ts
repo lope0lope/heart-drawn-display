@@ -297,7 +297,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      commit_capture: { Args: { e: Json; p_photo_url?: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never

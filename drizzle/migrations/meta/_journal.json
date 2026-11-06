@@ -8,6 +8,13 @@
       "when": 1793954765093,
       "tag": "0000_cloud_farm_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793954863139,
+      "tag": "0001_transactional_capture_commit",
+      "breakpoints": true
     }
   ]
 }
