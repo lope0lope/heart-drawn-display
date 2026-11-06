@@ -90,7 +90,6 @@ export default function OTGCameraCapture({ onCapture, onFallbackFile, onClose }:
       navigator.mediaDevices?.removeEventListener?.('devicechange', onChange);
       streamRef.current?.getTracks().forEach(track => track.stop());
     };
-    return () => streamRef.current?.getTracks().forEach(track => track.stop());
   }, [refreshDevices]);
 
   useEffect(() => {
