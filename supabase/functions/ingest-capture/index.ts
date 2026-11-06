@@ -73,7 +73,6 @@ async function ingest(e: EntryT) {
     tag, pen_id: e.house, line, pen_slot: e.pen, belly_cm: size,
     condition_codes: live, inspection_date: e.date, cull_schedule: cull || null,
   };
-  if (cull === 'CULLED') base.status = 'CULLED';
 
   const { data: ex } = await db.from('crocs').select('*').eq('tag', tag).maybeSingle();
   let crocId: number;
@@ -87,7 +86,6 @@ async function ingest(e: EntryT) {
       const moved = ex.pen_id !== e.house || ex.line !== line || ex.pen_slot !== e.pen;
       const { error } = await db.from('crocs').update({
         ...base,
-        status: cull === 'CULLED' ? 'CULLED' : (ex.status === 'CULLED' ? 'ACTIVE' : ex.status),
         placement_date: ex.placement_date ?? e.date,
         placement_belly_cm: ex.placement_belly_cm ?? size,
         pen_since: moved ? e.date : (ex.pen_since ?? e.date),
