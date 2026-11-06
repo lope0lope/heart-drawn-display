@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { captureRequest } from '@/lib/cloudConnection';
 
 import { useOnlineStatus, useOfflineConditionCodes } from '@/hooks/useOffline';
 import { useQueryClient } from '@tanstack/react-query';
@@ -208,110 +208,40 @@ export default function FieldCaptureScreen() {
     }
     setCommitting(true);
 
-    let inserted = 0, updated = 0, inspections = 0, photos = 0, failed = 0;
-    let photoWarning = '';
-
     try {
-      const tags = [...new Set(pending.map(p => p.tag.trim()))];
-      const { data: existing } = await supabase
-        .from('crocs')
-        .select('*')
-        .in('tag', tags);
-      const tagToId = new Map((existing ?? []).map(c => [c.tag, c as any] as const));
-
+      let saved = 0, duplicates = 0;
+      const completed = new Set<string>();
+      const failures: string[] = [];
       for (const e of pending) {
-        const slotN = parseInt(e.slot, 10);
-        const plainCodes = marksToCodes(e.marks);
-        const detailedCodes = e.marks.map(markToString);
-        const isCulled = normaliseCull(e.cull) === 'CULLED';
-        const cullCode = isCulled ? null : cullToConditionCode(e.cull);
-        const liveCodes = [...plainCodes];
-        if (cullCode) liveCodes.push(cullCode);
-
-        const live: any = {
-          tag: e.tag.trim(),
-          pen_id: e.house,
-          line: e.line,
-          pen_slot: slotN,
-          belly_cm: e.size ? parseFloat(e.size) : null,
-          condition_codes: liveCodes,
-          inspection_date: e.date,
-          cull_schedule: normaliseCull(e.cull) || null,
-        };
-
-        const ex = tagToId.get(e.tag.trim());
-        let crocId: number | undefined = ex?.id;
-
-        if (!ex) {
-          const { data, error } = await insertOneSafe('crocs', {
-            ...live,
-            placement_date: e.date,
-            placement_belly_cm: live.belly_cm,
-            pen_since: e.date,
-          }, CROC_PLACEMENT_KEYS);
-          if (error) { failed++; console.error(error); continue; }
-          crocId = (data as any).id;
-          inserted++;
-        } else {
-          if ((ex.inspection_date ?? '') <= e.date) {
-            const moved = ex.pen_id !== e.house || ex.line !== e.line || ex.pen_slot !== slotN;
-            const { error } = await updateSafeById('crocs', ex.id, {
-              ...live,
-              placement_date: ex.placement_date ?? e.date,
-              placement_belly_cm: ex.placement_belly_cm ?? live.belly_cm,
-              pen_since: moved ? e.date : (ex.pen_since ?? e.date),
-            }, CROC_PLACEMENT_KEYS);
-            if (error) { failed++; console.error(error); continue; }
-            updated++;
+        try {
+          const entry: Record<string, unknown> = {
+            client_id: e.id, house: e.house, line: e.line, pen: Number(e.slot),
+            tag: e.tag.trim(), size_cm: e.size ? Number(e.size) : null,
+            date: e.date, cull: e.cull,
+            marks: e.marks.map(m => ({ code: m.code, zone_key: m.zoneKey, zone_label: m.zoneLabel, x: m.mx, y: m.my, name: m.name })),
+          };
+          if (e.photoFull || e.photo) {
+            const blob = dataUrlToBlob(e.photoFull || e.photo);
+            const form = new FormData();
+            form.append('photo', blob, blob.type === 'image/png' ? 'capture.png' : 'capture.jpg');
+            form.append('tag', e.tag.trim()); form.append('date', e.date); form.append('client_id', e.id);
+            const uploaded = await captureRequest('/photo', { method: 'POST', body: form });
+            entry.photo_path = uploaded.photo_path;
           }
-        }
-
-        if (crocId) {
-          await supabase.from('inspections').delete()
-            .eq('croc_id', crocId).eq('inspection_date', e.date);
-          const { error } = await insertSafe('inspections', [{
-            croc_id: crocId,
-            inspection_date: e.date,
-            belly_cm: live.belly_cm,
-            condition_codes: detailedCodes.length ? detailedCodes : plainCodes,
-            pen_id: e.house,
-            line: e.line,
-            pen_slot: slotN,
-          }], INSPECTION_PEN_KEYS);
-          if (error) { failed++; console.error(error); }
-          else inspections++;
-
-          // Photo evidence — upload the full-resolution capture, not the UI preview
-          if (e.photo) {
-            const path = `${e.tag.trim()}/${e.date}-${e.id}.jpg`;
-            const up = await supabase.storage.from(PHOTO_BUCKET)
-              .upload(path, dataUrlToBlob(e.photoFull || e.photo), { contentType: 'image/jpeg', upsert: true });
-            if (up.error) {
-              photoWarning = up.error.message;
-            } else {
-              const { data: pub } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
-              const { error: pErr } = await supabase.from('croc_photos').insert({
-                croc_id: crocId,
-                tag: e.tag.trim(),
-                inspection_date: e.date,
-                photo_url: pub.publicUrl,
-                storage_path: path,
-                belly_cm: live.belly_cm,
-                marks: e.marks,
-              });
-              if (pErr) photoWarning = pErr.message;
-              else photos++;
-            }
-          }
-        }
+          const response = await captureRequest('', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries: [entry] }) });
+          const result = response.results?.[0];
+          if (result?.status === 'saved' || result?.status === 'duplicate') {
+            completed.add(e.id);
+            if (result.status === 'saved') saved++; else duplicates++;
+          } else failures.push(result?.reason ?? 'Entry rejected');
+        } catch (error) { failures.push(error instanceof Error ? error.message : 'Upload failed'); }
       }
-
+      const remaining = pending.filter(e => !completed.has(e.id));
+      await savePendingEntries(remaining);
+      setPending(remaining);
       queryClient.invalidateQueries();
-      toast.success(`Committed: ${inserted} new · ${updated} updated · ${inspections} inspections · ${photos} photos${failed ? ` · ${failed} failed` : ''}`);
-      if (photoWarning) {
-        toast.error(`Photos not stored: ${photoWarning}`);
-      }
-      if (failed === 0 && !photoWarning) { setPending([]); await clearPendingEntries(); }
+      if (saved || duplicates) toast.success(`Committed: ${saved} saved · ${duplicates} already saved`);
+      if (failures.length) toast.error(`${failures.length} entries remain on this device: ${failures[0]}`);
     } catch (err: any) {
       toast.error(`Commit failed: ${err.message ?? err}`);
     } finally {
