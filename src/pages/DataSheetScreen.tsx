@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { captureRequest } from '@/lib/cloudConnection';
 import { useOfflineConditionCodes, useOnlineStatus } from '@/hooks/useOffline';
 import {
@@ -15,7 +16,8 @@ interface SheetDraft { id: string; name: string; house: string; date: string; ro
 const STORE = 'croctrack.data-sheets.v1';
 const today = () => new Date().toISOString().slice(0, 10);
 const loadAll = (): SheetDraft[] => { try { return JSON.parse(localStorage.getItem(STORE) ?? '[]'); } catch { return []; } };
-const newSheet = (name = `Sheet ${new Date().toLocaleString()}`): SheetDraft =>
+const defaultName = (date: string) => `Inspection: ${date}`;
+const newSheet = (name = defaultName(today())): SheetDraft =>
   ({ id: newId(), name, house: 'GH1', date: today(), rows: Array.from({ length: 20 }, () => blankRow()), updatedAt: Date.now() });
 
 function toIso(v: unknown): string | null {
@@ -37,6 +39,7 @@ export default function DataSheetScreen() {
   const [activeId, setActiveId] = useState(() => sheets[0].id);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [full, setFull] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const sheet = sheets.find(s => s.id === activeId) ?? sheets[0];
 
@@ -183,29 +186,41 @@ export default function DataSheetScreen() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-surface border border-border rounded-lg p-4 flex flex-wrap gap-3 items-end">
-        <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Sheet
-          <select className="h-10 rounded-md border border-border bg-background px-2 text-sm text-foreground min-w-[200px]" value={sheet.id} onChange={e => setActiveId(e.target.value)}>
-            {sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Name
-          <Input className="h-10 w-[200px]" value={sheet.name} onChange={e => update(s => ({ ...s, name: e.target.value }))} />
-        </label>
+    <div className={full ? "fixed inset-0 z-40 bg-background p-3 flex flex-col gap-3" : "space-y-4 flex flex-col"}>
+      <div className="bg-surface border border-border rounded-lg px-3 py-2 flex flex-wrap gap-3 items-end">
         <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Default house
           <select className="h-10 rounded-md border border-border bg-background px-2 text-sm text-foreground" value={sheet.house} onChange={e => update(s => ({ ...s, house: e.target.value }))}>
             <option>GH1</option><option>GH2</option>
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Inspection date
-          <Input type="date" className="h-10" value={sheet.date} onChange={e => update(s => ({ ...s, date: e.target.value, rows: s.rows.map(r => r.committed ? { ...r, committed: false, clientId: newId() } : r) }))} />
-        </label>
+        
+        <div className="text-xs font-mono-ibm text-ct-text2 self-center truncate max-w-[260px]">{sheet.name}</div>
         <div className="flex flex-wrap gap-2 ml-auto">
-          <Button variant="outline" onClick={() => { const d = newSheet(); setSheets(a => [d, ...a]); setActiveId(d.id); }}>New sheet</Button>
+          <Popover>
+            <PopoverTrigger asChild><Button variant="outline">Sheet options ▾</Button></PopoverTrigger>
+            <PopoverContent align="end" className="w-[300px] space-y-3">
+              <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Sheet
+          <select className="h-10 rounded-md border border-border bg-background px-2 text-sm text-foreground w-full" value={sheet.id} onChange={e => setActiveId(e.target.value)}>
+            {sheets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Name
+          <Input className="h-10 w-full" value={sheet.name} onChange={e => update(s => ({ ...s, name: e.target.value }))} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono-ibm text-ct-text2">Inspection date
+          <Input type="date" className="h-10" value={sheet.date} onChange={e => update(s => ({ ...s, date: e.target.value, name: s.name === defaultName(s.date) || !s.name.trim() ? defaultName(e.target.value) : s.name, rows: s.rows.map(r => r.committed ? { ...r, committed: false, clientId: newId() } : r) }))} />
+        </label>
+        
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
+                <Button variant="outline" onClick={() => { const d = newSheet(); setSheets(a => [d, ...a]); setActiveId(d.id); }}>New sheet</Button>
           <Button variant="outline" onClick={() => fileRef.current?.click()}>Open Excel file</Button>
           <Button variant="outline" onClick={download}>Download Excel</Button>
           <Button variant="outline" onClick={deleteSheet}>Delete sheet</Button>
+          
+              </div>
+            </PopoverContent>
+          </Popover>
+          <Button variant="outline" onClick={() => setFull(f => !f)}>{full ? 'Exit full screen' : 'Full screen'}</Button>
           <Button onClick={commit} disabled={committing || !online}>{committing ? 'Uploading…' : `Commit ${ready} row(s)`}</Button>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) openFile(f); e.target.value = ''; }} />
@@ -218,7 +233,7 @@ export default function DataSheetScreen() {
         <span className="ml-auto">{savedAt ? `Draft saved ${new Date(savedAt).toLocaleTimeString()}` : 'Draft saves automatically'}</span>
       </div>
 
-      <div className="overflow-auto border border-border rounded-lg bg-background max-h-[65vh]">
+      <div className={`overflow-auto border border-border rounded-lg bg-background flex-1 min-h-0 ${full ? "" : "max-h-[78vh]"}`}>
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-surface-2">
             <tr>

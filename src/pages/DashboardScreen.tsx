@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAllCrocs } from '@/hooks/useCrocs';
 import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
 import CullHorizonDialog from '@/components/CullHorizonDialog';
+import CrocStateVenn from '@/components/CrocStateVenn';
 import type { CrocRecord } from '@/hooks/useCrocs';
 
 function Pill({ children }: { children: React.ReactNode }) {
@@ -84,6 +85,8 @@ export default function DashboardScreen() {
           onClick={() => openDrill('Ready in 3 More Cycles', groups[3])}
         />
       </div>
+
+      <CrocStateVenn crocs={occupied} onOpen={openDrill} />
 
       <div className="bg-surface border border-border rounded overflow-hidden">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
