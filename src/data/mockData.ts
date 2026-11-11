@@ -1,7 +1,7 @@
 // Shared types and constants used across the app
 // Live data comes from Supabase — this file only holds static references
 
-export type ScreenName = 'dashboard' | 'penmap' | 'forecast' | 'feed' | 'upload' | 'capture' | 'croc' | 'analytics' | 'codes';
+export type ScreenName = 'dashboard' | 'penmap' | 'forecast' | 'feed' | 'upload' | 'capture' | 'croc' | 'analytics' | 'codes' | 'sheet';
 
 export const SCREEN_TITLES: Record<ScreenName, string> = {
   dashboard: 'Dashboard',
@@ -13,4 +13,5 @@ export const SCREEN_TITLES: Record<ScreenName, string> = {
   croc: 'Croc Profiles',
   analytics: 'Analytics',
   codes: 'Condition Codes',
+  sheet: 'Data Entry Sheet',
 };

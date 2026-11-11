@@ -23,13 +23,13 @@ export default defineConfig(({ mode }) => ({
       devOptions: { enabled: false },
       includeAssets: ["favicon.ico"],
       manifest: {
-        name: "CrocTrack Field Capture",
+        name: "CrocTrack",
         short_name: "CrocTrack",
         description: "Offline-capable crocodile inspection capture for remote farm zones.",
-        start_url: "/capture",
+        start_url: "/",
         scope: "/",
         display: "standalone",
-        orientation: "portrait",
+        orientation: "any",
         background_color: "#ffffff",
         // Lets the installed app appear in Android's Share menu, so a photo taken
         // in a USB camera app can be shared straight into the current entry.

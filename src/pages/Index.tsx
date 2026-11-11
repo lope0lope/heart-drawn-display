@@ -10,6 +10,7 @@ import DataUploadScreen from './DataUploadScreen';
 import CrocProfileScreen from './CrocProfileScreen';
 import AnalyticsScreen from './AnalyticsScreen';
 import ConditionCodesScreen from './ConditionCodesScreen';
+import DataSheetScreen from './DataSheetScreen';
 import FieldCaptureScreen from './FieldCaptureScreen';
 
 const SCREENS: Record<ScreenName, React.ComponentType<any>> = {
@@ -22,6 +23,7 @@ const SCREENS: Record<ScreenName, React.ComponentType<any>> = {
   croc: CrocProfileScreen,
   analytics: AnalyticsScreen,
   codes: ConditionCodesScreen,
+  sheet: DataSheetScreen,
 };
 
 export default function Index() {

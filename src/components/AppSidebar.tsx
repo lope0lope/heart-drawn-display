@@ -12,6 +12,7 @@ interface SidebarProps {
 const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: string; badge?: string }> = [
   { section: 'Operations', id: 'dashboard', icon: '◻', label: 'Dashboard' },
   { id: 'penmap', icon: '⊞', label: 'Pen Map' },
+  { section: 'Data Entry', id: 'sheet', icon: '▦', label: 'Data Entry Sheet' },
   { section: 'Records', id: 'upload', icon: '↑', label: 'Data Upload' },
   { id: 'croc', icon: '◇', label: 'Croc Profiles' },
 ];
