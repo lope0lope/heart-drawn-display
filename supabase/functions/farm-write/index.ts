@@ -1,10 +1,10 @@
+import { uploadAllowed } from '../_shared/upload-auth.ts';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 const cors = { ...corsHeaders, 'Access-Control-Allow-Headers': `${corsHeaders['Access-Control-Allow-Headers']}, x-api-key, x-farm-path, x-farm-method, x-upsert` };
 const tables = ['crocs','inspections','croc_photos','cull_records','feed_records','upload_logs'];
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  const key = Deno.env.get('CAPTURE_API_KEY');
-  if (!key || req.headers.get('x-api-key') !== key) return new Response(JSON.stringify({ message: 'Invalid upload connection key' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
+  if (!uploadAllowed(req)) return new Response(JSON.stringify({ message: 'Invalid upload connection key' }), { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } });
   const path = req.headers.get('x-farm-path') ?? '';
   const method = req.headers.get('x-farm-method') ?? '';
   const table = path.match(/^\/rest\/v1\/([a-z_]+)(?:\?|$)/)?.[1];

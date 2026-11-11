@@ -5,8 +5,9 @@ export function saveUploadKey(key: string) { localStorage.setItem(KEY_NAME, key.
 export const captureEndpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingest-capture`;
 export function captureHeaders() {
   const key = getUploadKey();
-  if (!key) throw new Error('Set the upload connection key first using Connection settings.');
-  return { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, 'x-api-key': key };
+  const h: Record<string, string> = { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY };
+  if (key) h['x-api-key'] = key;
+  return h;
 }
 
 export async function captureRequest(path: string, init: RequestInit = {}) {

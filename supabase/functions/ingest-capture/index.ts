@@ -1,3 +1,4 @@
+import { uploadAllowed } from '../_shared/upload-auth.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders } from 'npm:@supabase/supabase-js@2/cors';
 import { z } from 'npm:zod@3';
@@ -12,8 +13,7 @@ const BUCKET = 'croc-photos';
 const PhotoMeta = Entry.pick({ client_id: true, tag: true, date: true });
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
-  const key = Deno.env.get('CAPTURE_API_KEY');
-  if (!key || req.headers.get('x-api-key') !== key) return json({ error: 'unauthorized' }, 401);
+  if (!uploadAllowed(req)) return json({ error: 'unauthorized' }, 401);
   const route = new URL(req.url).pathname.replace(/^.*\/ingest-capture/, '') || '/';
   try {
     if (req.method === 'GET' && route === '/health') return json({ ok: true, storage: 'private', max_photo_bytes: MAX_PHOTO_BYTES });

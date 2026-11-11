@@ -15,11 +15,10 @@ export const supabase = createClient<Database>(url, publishableKey, {
       const dataWrite = target.pathname.startsWith('/rest/v1/');
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && (fileWrite || dataWrite)) {
         const key = getUploadKey();
-        if (!key) return new Response(JSON.stringify({ message: 'Set the upload key in Connection settings before uploading.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         const headers = new Headers(request.headers);
         headers.delete('authorization');
         headers.set('apikey', publishableKey);
-        headers.set('x-api-key', key);
+        if (key) headers.set('x-api-key', key);
         headers.set('x-farm-path', target.pathname + target.search);
         headers.set('x-farm-method', request.method);
         return fetch(`${url}/functions/v1/farm-write`, { method: 'POST', headers, body: await request.arrayBuffer() });
