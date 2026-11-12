@@ -298,6 +298,7 @@ export type Database = {
     }
     Functions: {
       commit_capture: { Args: { e: Json; p_photo_url?: string }; Returns: Json }
+      wipe_farm_data: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never

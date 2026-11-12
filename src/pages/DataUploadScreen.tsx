@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { exportLiveCrocs, exportInspectionHistory } from '@/lib/exportData';
+import { wipeFarmData } from '@/lib/wipeFarmData';
 import { useUploadLogs } from '@/hooks/useFeedData';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -406,7 +407,7 @@ export default function DataUploadScreen() {
 
   const handleWipeAll = useCallback(async () => {
     const ok = window.confirm(
-      'Wipe ALL croc data?\n\nThis permanently deletes every croc, inspection, cull record and upload log. This cannot be undone.'
+      'Wipe ALL croc data?\n\nThis permanently deletes every croc, inspection, photo-history record, cull record, feed record and upload log, including API uploads. Saved drafts on your devices are not deleted. This cannot be undone.'
     );
     if (!ok) return;
     const ok2 = window.prompt('Type WIPE to confirm:') === 'WIPE';
@@ -414,13 +415,10 @@ export default function DataUploadScreen() {
 
     setImporting(true);
     try {
-      // Delete in dependency order
-      await supabase.from('inspections').delete().gt('id', 0);
-      await supabase.from('cull_records').delete().gt('id', 0);
-      await supabase.from('crocs').delete().gt('id', 0);
-      await supabase.from('upload_logs').delete().gt('id', 0);
-      queryClient.invalidateQueries();
-      refetchLogs();
+      await wipeFarmData();
+      await queryClient.invalidateQueries();
+      setDayCounts(null);
+      await refetchLogs();
       toast.success('All croc data wiped.');
     } catch (err: any) {
       toast.error(err.message || 'Wipe failed');

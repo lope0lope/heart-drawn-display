@@ -15,6 +15,13 @@
       "when": 1793954863139,
       "tag": "0001_transactional_capture_commit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794470264719,
+      "tag": "0002_atomic_farm_data_wipe",
+      "breakpoints": true
     }
   ]
 }
