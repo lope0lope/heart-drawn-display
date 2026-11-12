@@ -7,3 +7,5 @@
 - The Data Entry Sheet keeps drafts on the device (autosaved) and commits rows through `ingest-capture` like Field Capture; condition codes in the Comment column become general-zone marks, so all capture paths share one commit route.
 
 - Full dataset wipes use the authorized `farm-write/wipe` endpoint and service-only transactional `wipe_farm_data` function; clear API deduplication and photo-history dependencies before crocs so wipes cannot silently leave API entries behind. Device drafts and unreferenced storage bytes are not cleared by a dataset wipe.
+
+- Every wipe DELETE must use an explicit predicate on its non-null primary key; Cloud rejects unqualified DELETE statements even inside service-only functions.
