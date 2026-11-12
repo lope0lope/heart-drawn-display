@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import crocDiagram from '@/assets/croc-diagram.png';
+import crocDiagram from '@/assets/crocodile-upright.png.asset.json';
+import { Button } from '@/components/ui/button';
 import {
   CROC_H, CROC_W, CROC_ZONES, ZONE_BY_KEY,
   markerPosition, type ConditionMark,
@@ -76,7 +77,7 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
 
       <div className="relative mx-auto max-w-[340px] select-none" style={{ touchAction: 'manipulation' }}>
         <img
-          src={crocDiagram}
+          src={crocDiagram.url}
           alt="Crocodile body diagram for marking condition locations"
           className="w-full h-auto block pointer-events-none"
           draggable={false}
@@ -89,11 +90,19 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
           {CROC_ZONES.map(z => {
             const common = {
               className: `${readOnly ? '' : 'cursor-pointer'} fill-ct-accent opacity-0 hover:opacity-30 active:opacity-40 transition-opacity`,
+              role: readOnly ? undefined : 'button',
+              'aria-label': `Mark condition in ${z.label}`,
+              tabIndex: readOnly ? undefined : 0,
+              onKeyDown: (e: React.KeyboardEvent<SVGElement>) => {
+                if (!readOnly && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  setTapPoint({ mx: z.cx, my: z.cy });
+                  setActiveZone(z.key);
+                }
+              },
               onClick: readOnly ? undefined : (e: React.MouseEvent<SVGElement>) => openZone(z.key, e),
             };
-            return z.points
-              ? <polygon key={z.key} points={z.points} {...common} />
-              : <ellipse key={z.key} {...z.ellipse!} {...common} />;
+            return <polygon key={z.key} points={z.points} {...common} />;
           })}
         </svg>
 
@@ -126,13 +135,13 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
                 <b className="text-ct-accent font-semibold">{m.name}</b> — {m.zoneLabel}
               </span>
               {!readOnly && (
-                <button
+                <Button variant="ghost" size="icon"
                   onClick={() => removeMark(m.id)}
                   className="text-ct-text3 hover:text-ct-danger p-1 active:scale-95"
                   aria-label={`Remove ${m.name}`}
                 >
                   <X className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               )}
             </div>
           ))
@@ -152,22 +161,22 @@ export default function CrocConditionMap({ marks, onChange, conditionCodes, read
             </div>
             <div className="grid grid-cols-3 gap-2">
               {conditionCodes.map(c => (
-                <button
+                <Button variant="outline"
                   key={c.code}
                   onClick={() => addMark(activeZone, c)}
-                  className="bg-surface-2 border border-border rounded-sm px-1.5 py-3 text-[11px] text-ct-text hover:bg-ct-accent hover:text-background hover:border-ct-accent active:scale-95 transition-all"
+                  className="h-auto block bg-surface-2 border border-border rounded-sm px-1.5 py-3 text-[11px] text-ct-text hover:bg-ct-accent hover:text-background hover:border-ct-accent active:scale-95 transition-all"
                 >
                   <span className="block font-mono-ibm font-bold text-[13px] mb-1">{c.code}</span>
                   {c.name}
-                </button>
+                </Button>
               ))}
             </div>
-            <button
+            <Button variant="outline"
               onClick={() => { setActiveZone(null); setTapPoint(null); }}
               className="w-full mt-4 border border-border text-ct-text3 rounded-sm py-3 font-mono-ibm text-[11px] uppercase tracking-[1.5px] hover:text-ct-text active:scale-[.98]"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}

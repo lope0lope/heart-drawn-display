@@ -9,3 +9,5 @@
 - Full dataset wipes use the authorized `farm-write/wipe` endpoint and service-only transactional `wipe_farm_data` function; clear API deduplication and photo-history dependencies before crocs so wipes cannot silently leave API entries behind. Device drafts and unreferenced storage bytes are not cleared by a dataset wipe.
 
 - Every wipe DELETE must use an explicit predicate on its non-null primary key; Cloud rejects unqualified DELETE statements even inside service-only functions.
+
+- Hide-layout touch zones use labelled polygons transformed with the upright image; keep their uniformly scaled coordinates within the existing capture API bounds so uploads remain compatible.

@@ -1,115 +1,48 @@
-/**
- * Crocodile body-zone geometry for location-based condition capture.
- *
- * The diagram is 976 x 1091. Body bands are generated from a smoothed
- * silhouette profile (half-width per y) so each hotspot hugs the animal.
- * Every band is split left/right; limbs are simple ellipses.
+/** Touch regions traced from the supplied hide layout, rotated head-up.
+ * Keep coordinates within the capture API's existing 976 × 1091 bounds.
  */
-
-export const CROC_W = 976;
+const SCALE = 1091 / 1588;
+export const CROC_W = 572 * SCALE;
 export const CROC_H = 1091;
-const CX = 488;
-
-const KEYFRAMES: [number, number][] = [
-  [20, 10], [128, 45], [260, 58], [380, 62], [500, 97],
-  [610, 84], [700, 70], [790, 55], [890, 36], [1079, 3],
-];
-
-const SEGMENTS = [
-  { key: 'snout', label: 'Snout', y0: 20, y1: 128 },
-  { key: 'head', label: 'Head', y0: 128, y1: 260 },
-  { key: 'chest', label: 'Chest', y0: 260, y1: 380 },
-  { key: 'belly', label: 'Belly', y0: 380, y1: 610 },
-  { key: 'pelvis', label: 'Pelvis', y0: 610, y1: 790 },
-  { key: 'upper-tail', label: 'Upper Tail', y0: 790, y1: 890 },
-  { key: 'lower-tail', label: 'Lower Tail', y0: 890, y1: 1079 },
-];
-
-const LIMBS = [
-  { key: 'arm', side: 'left', label: 'Arm', cx: 377, cy: 310, rx: 53, ry: 70 },
-  { key: 'arm', side: 'right', label: 'Arm', cx: 599, cy: 310, rx: 53, ry: 70 },
-  { key: 'leg', side: 'left', label: 'Leg', cx: 388, cy: 705, rx: 43, ry: 85 },
-  { key: 'leg', side: 'right', label: 'Leg', cx: 588, cy: 705, rx: 43, ry: 85 },
-];
 
 export interface CrocZone {
   key: string;
   label: string;
-  /** SVG polygon points, when the zone is a body band. */
-  points?: string;
-  /** Ellipse geometry, when the zone is a limb. */
-  ellipse?: { cx: number; cy: number; rx: number; ry: number };
-  /** Anchor for marker placement. */
+  points: string;
   cx: number;
   cy: number;
 }
 
-function buildProfile(points: [number, number][], samplesPerSeg: number) {
-  const at = (i: number) => points[Math.max(0, Math.min(points.length - 1, i))];
-  const out: [number, number][] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    for (let s = 0; s < samplesPerSeg; s++) {
-      const t = s / samplesPerSeg, t2 = t * t, t3 = t2 * t;
-      const y = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
-      const w = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
-      out.push([y, Math.max(0, w)]);
-    }
-  }
-  out.push([...points[points.length - 1]] as [number, number]);
-  return out;
+type Point = [number, number];
+/** Rotate the original landscape coordinates clockwise, then uniformly scale. */
+function upright([x, y]: Point): Point {
+  return [(572 - y) * SCALE, x * SCALE];
+}
+function region(key: string, outline: Point[], anchor: Point): CrocZone {
+  const [cx, cy] = upright(anchor);
+  return { key, label: key, points: outline.map(upright).map(p => p.join(',')).join(' '), cx, cy };
 }
 
-function widthAt(profile: [number, number][], y: number) {
-  for (let i = 0; i < profile.length - 1; i++) {
-    if (y >= profile[i][0] && y <= profile[i + 1][0]) {
-      const span = profile[i + 1][0] - profile[i][0];
-      const t = span === 0 ? 0 : (y - profile[i][0]) / span;
-      return profile[i][1] + (profile[i + 1][1] - profile[i][1]) * t;
-    }
-  }
-  return profile[profile.length - 1][1];
-}
+// A2 underlays its four quadrants: the central cross remains an A2 touch target.
+export const CROC_ZONES: CrocZone[] = [
+  region('E1', [[14,307],[55,279],[105,258],[168,238],[168,363],[102,349],[52,332]], [105,303]),
+  region('A1', [[168,238],[220,217],[280,203],[325,179],[365,166],[412,160],[412,421],[356,424],[308,403],[267,388],[213,389],[168,363]], [270,300]),
+  region('A2', [[412,160],[421,86],[514,78],[616,85],[706,103],[748,105],[774,162],[789,188],[805,391],[791,428],[751,460],[649,487],[548,490],[448,475],[412,421]], [581,287]),
+  region('Q1', [[421,86],[514,78],[572,82],[572,277],[420,277]], [492,226]),
+  region('Q2', [[590,83],[706,103],[748,105],[774,162],[789,188],[797,277],[590,277]], [670,225]),
+  region('Q3', [[420,295],[572,295],[572,490],[548,490],[448,475],[412,421]], [495,348]),
+  region('Q4', [[590,295],[798,295],[805,391],[791,428],[751,460],[649,487],[590,489]], [675,354]),
+  region('A3', [[789,188],[848,177],[963,186],[1054,193],[1119,207],[1119,346],[1033,362],[914,386],[805,401],[805,391]], [967,284]),
+  region('E3', [[1119,207],[1233,227],[1375,251],[1493,266],[1575,274],[1546,291],[1473,306],[1332,325],[1218,337],[1119,346]], [1260,278]),
+  region('E2', [[166,217],[163,163],[181,135],[220,118],[252,118],[273,137],[280,203],[220,217]], [217,174]),
+  region('E4', [[168,374],[265,387],[260,420],[248,474],[225,495],[180,488],[159,469],[161,424]], [207,425]),
+  region('F1', [[311,148],[288,96],[285,67],[310,47],[353,36],[384,41],[399,57],[397,93],[393,135],[354,139]], [344,90]),
+  region('F2', [[751,80],[779,51],[810,21],[832,17],[853,32],[872,68],[889,96],[885,114],[863,125],[807,140],[785,115]], [820,78]),
+  region('F3', [[783,446],[806,431],[831,436],[870,463],[902,485],[907,503],[879,522],[849,547],[833,545],[808,520],[783,485],[771,463]], [838,488]),
+  region('F4', [[312,421],[350,430],[391,451],[401,482],[405,516],[393,536],[373,540],[333,530],[292,515],[287,497],[298,461]], [348,485]),
+];
 
-function buildZones(): CrocZone[] {
-  const profile = buildProfile(KEYFRAMES, 14);
-  const zones: CrocZone[] = [];
-
-  for (const seg of SEGMENTS) {
-    const band = profile.filter(p => p[0] >= seg.y0 && p[0] <= seg.y1);
-    const hw0 = widthAt(profile, seg.y0), hw1 = widthAt(profile, seg.y1);
-    if (!band.length || band[0][0] > seg.y0) band.unshift([seg.y0, hw0]);
-    if (band[band.length - 1][0] < seg.y1) band.push([seg.y1, hw1]);
-
-    const midY = (seg.y0 + seg.y1) / 2;
-    const midHw = widthAt(profile, midY);
-
-    const toStr = (pts: [number, number][]) => pts.map(p => `${p[0]},${p[1]}`).join(' ');
-    const left: [number, number][] = [[CX, seg.y0], ...band.map(p => [CX - p[1], p[0]] as [number, number]), [CX, seg.y1]];
-    const right: [number, number][] = [[CX, seg.y0], ...band.map(p => [CX + p[1], p[0]] as [number, number]), [CX, seg.y1]];
-
-    zones.push({ key: `left-${seg.key}`, label: `Left ${seg.label}`, points: toStr(left), cx: CX - midHw * 0.55, cy: midY });
-    zones.push({ key: `right-${seg.key}`, label: `Right ${seg.label}`, points: toStr(right), cx: CX + midHw * 0.55, cy: midY });
-  }
-
-  for (const limb of LIMBS) {
-    zones.push({
-      key: `${limb.side}-${limb.key}`,
-      label: `${limb.side === 'left' ? 'Left' : 'Right'} ${limb.label}`,
-      ellipse: { cx: limb.cx, cy: limb.cy, rx: limb.rx, ry: limb.ry },
-      cx: limb.cx,
-      cy: limb.cy,
-    });
-  }
-
-  return zones;
-}
-
-export const CROC_ZONES: CrocZone[] = buildZones();
-
-export const ZONE_BY_KEY: Record<string, CrocZone> = Object.fromEntries(
-  CROC_ZONES.map(z => [z.key, z]),
-);
+export const ZONE_BY_KEY: Record<string, CrocZone> = Object.fromEntries(CROC_ZONES.map(z => [z.key, z]));
 
 /** A single condition pinned to a body location. */
 export interface ConditionMark {
@@ -133,10 +66,10 @@ export function marksToCodes(marks: ConditionMark[]) {
   return [...new Set(marks.map(m => m.code))];
 }
 
-/** Place a marker inside a zone with a little jitter so repeats don't stack. */
+/** Place a marker at the zone anchor when no touch coordinates are available. */
 export function markerPosition(zone: CrocZone) {
   return {
-    mx: zone.cx + (Math.random() - 0.5) * 55,
-    my: zone.cy + (Math.random() - 0.5) * 55,
+    mx: zone.cx,
+    my: zone.cy,
   };
 }
