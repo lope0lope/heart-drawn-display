@@ -26,7 +26,9 @@ export default defineConfig(({ mode }) => ({
         name: "CrocTrack",
         short_name: "CrocTrack",
         description: "Offline-capable crocodile inspection capture for remote farm zones.",
-        start_url: "/",
+        // The query string makes this a new start_url value, so Chrome drops the
+        // old cached "/capture" start page when the app is reinstalled/updated.
+        start_url: "/?source=pwa",
         scope: "/",
         display: "standalone",
         orientation: "any",
