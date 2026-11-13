@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon, isRejected } from '@/lib/crocUtils';
+import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon, isRejected, isMarkedCull } from '@/lib/crocUtils';
+import { Button } from '@/components/ui/button';
 import CullHorizonDialog from '@/components/CullHorizonDialog';
 import CrocStateVenn from '@/components/CrocStateVenn';
 import type { CrocRecord } from '@/hooks/useCrocs';
@@ -12,21 +13,22 @@ function Pill({ children }: { children: React.ReactNode }) {
 function KPI({ label, value, sub, variant, onClick }: { label: string; value: string; sub?: string; variant?: 'warn' | 'danger' | 'info' | 'cull' | 'good'; onClick?: () => void }) {
   const topColor = variant === 'warn' ? 'bg-ct-warn' : variant === 'danger' ? 'bg-ct-danger' : variant === 'info' ? 'bg-ct-info' : variant === 'cull' ? 'bg-ct-cull' : variant === 'good' ? 'bg-ct-good' : 'bg-ct-accent';
   return (
-    <div className={`bg-surface border border-border rounded p-4 relative overflow-hidden ${onClick ? 'cursor-pointer hover:ring-1 hover:ring-ct-accent transition-all active:scale-[.98]' : ''}`} onClick={onClick}>
+    <Button variant="outline" className={`h-auto whitespace-normal text-left block w-full bg-surface border border-border rounded p-4 relative overflow-hidden ${onClick ? 'cursor-pointer hover:ring-1 hover:ring-ct-accent transition-all active:scale-[.98]' : ''}`} onClick={onClick}>
       <div className={`absolute top-0 left-0 right-0 h-0.5 ${topColor}`} />
       <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[2px] uppercase mb-2">{label}</div>
       <div className="font-display text-[38px] font-semibold text-ct-text leading-none">{value}</div>
       {sub && <div className="text-[11px] text-ct-text3 mt-1">{sub}</div>}
-    </div>
+    </Button>
   );
 }
 
 export default function DashboardScreen() {
-  const { data: allCrocs, isLoading } = useAllCrocs();
+  const { data: allCrocs, isLoading } = useAllCrocs(true);
   const [drill, setDrill] = useState<{ title: string; crocs: CrocRecord[] } | null>(null);
 
   const grouped = useMemo(() => {
-    const occupied = allCrocs ? getOccupied(allCrocs) : [];
+    const markedCull = (allCrocs ?? []).filter(isMarkedCull);
+    const occupied = getOccupied((allCrocs ?? []).filter(c => !isMarkedCull(c)));
     const groups: Record<0 | 1 | 2, CrocRecord[]> = { 0: [], 1: [], 2: [] };
     const rejected: CrocRecord[] = []; const unmarked: CrocRecord[] = [];
     for (const c of occupied) {
@@ -35,19 +37,20 @@ export default function DashboardScreen() {
       else if (isRejected(c)) rejected.push(c);
       else unmarked.push(c);
     }
-    return { occupied, groups, rejected, unmarked };
+    return { occupied, groups, rejected, unmarked, markedCull };
   }, [allCrocs]);
 
   if (isLoading || !allCrocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading live data…</div>;
   }
 
-  const { occupied, groups, rejected, unmarked } = grouped;
+  const { occupied, groups, rejected, unmarked, markedCull } = grouped;
   const states = [
     { label: 'NX', title: 'Ready Next Cycle (NX)', list: groups[0] },
     { label: '1', title: 'Ready in 1 More Cycle', list: groups[1] },
     { label: '2', title: 'Ready in 2 More Cycles', list: groups[2] },
     { label: 'R', title: 'Rejected (R)', list: rejected },
+    { label: 'Cull', title: 'Marked Cull', list: markedCull },
     { label: 'Not marked', title: 'Not marked', list: unmarked },
   ].map(s => ({ ...s, counts: countSizeBuckets(s.list) }));
   const gh1Count = occupied.filter(c => c.pen_id === 'GH1').length;
@@ -59,7 +62,7 @@ export default function DashboardScreen() {
 
   return (
     <div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3.5 mb-5">
         <KPI
           label="Total Crocodiles"
           value={occupied.length.toLocaleString()}
@@ -93,6 +96,13 @@ export default function DashboardScreen() {
           sub="Marked R · tap for sizes"
           variant="danger"
           onClick={() => openDrill('Rejected (R)', rejected)}
+        />
+        <KPI
+          label="Marked Cull"
+          value={markedCull.length.toString()}
+          sub="Cull · sizes & printable list"
+          variant="good"
+          onClick={() => openDrill('Marked Cull', markedCull)}
         />
       </div>
 

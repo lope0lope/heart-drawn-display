@@ -39,14 +39,13 @@ export function useCrocs(penId?: string) {
   });
 }
 
-export function useAllCrocs() {
+export function useAllCrocs(includeCulled = false) {
   return useQuery({
-    queryKey: ['crocs', 'all'],
+    queryKey: includeCulled ? ['crocs', 'all', 'including-culled'] : ['crocs', 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('crocs')
-        .select('*')
-        .or('cull_schedule.is.null,cull_schedule.neq.CULLED')
+      let query = supabase.from('crocs').select('*');
+      if (!includeCulled) query = query.or('cull_schedule.is.null,cull_schedule.neq.CULLED');
+      const { data, error } = await query
         .order('pen_id')
         .order('line')
         .order('pen_slot');

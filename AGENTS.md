@@ -11,3 +11,5 @@
 - Every wipe DELETE must use an explicit predicate on its non-null primary key; Cloud rejects unqualified DELETE statements even inside service-only functions.
 
 - Hide-layout touch zones use labelled polygons transformed with the upright image; keep their uniformly scaled coordinates within the existing capture API bounds so uploads remain compatible.
+
+- Dashboard reads include retained culled rows for the Cull report only; keep other screens' default active-only reads so cleared pens do not reappear.

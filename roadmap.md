@@ -6,3 +6,8 @@
 # Data Entry Sheet
 - [x] Installed app opens on the dashboard.
 - [x] Spreadsheet-style entry page (House, Pen, Tag, Size, Cull, Comment) with autosaved drafts, open/download Excel, commit.
+
+# Dashboard Cull report
+- [x] Add a Cull count and size-by-state row including retained Cull entries.
+- [x] Reuse the size popup and printable house/pen/tag PDF list.
+- [x] Verify Cull classification and the dashboard-to-PDF flow.

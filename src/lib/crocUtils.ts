@@ -175,6 +175,13 @@ export function isRejected(croc: CrocRecord): boolean {
   return (croc.cull_schedule ?? '').trim().toUpperCase() === 'R';
 }
 
+/** Explicit Cull entries are retained for reporting, but excluded from active stock. */
+export function isMarkedCull(croc: CrocRecord): boolean {
+  const isCull = (value: string) => ['CULL', 'CULLED'].includes(value.trim().toUpperCase());
+  return isCull(croc.cull_schedule ?? '') ||
+    (croc.condition_codes ?? []).some(code => code.split(/[,;\s]+/).some(isCull));
+}
+
 /**
  * Legacy helper retained for non-dashboard callers. Mirrors `cullMarkerHorizon`
  * semantics so the whole app uses one mapping.
