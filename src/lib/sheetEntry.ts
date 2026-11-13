@@ -17,7 +17,7 @@ export const SHEET_COLUMNS = [
   { key: 'pen', label: 'Pen', hint: 'e.g. A12' },
   { key: 'tag', label: 'Tag', hint: 'Tag ID' },
   { key: 'size', label: 'Size (cm)', hint: 'e.g. 37' },
-  { key: 'cull', label: 'Cull', hint: 'Nxt, 1, 2, 3' },
+  { key: 'cull', label: 'Cull', hint: 'Nxt, 1, 2, R' },
   { key: 'comment', label: 'Comment (conditions)', hint: 'e.g. BS, TH or Cull' },
 ] as const;
 export type SheetColumnKey = typeof SHEET_COLUMNS[number]['key'];
@@ -41,12 +41,13 @@ export function parsePen(raw: string): { line: string; pen: number } | null {
   return { line: m[1].toUpperCase(), pen };
 }
 
-/** Nxt/next/nx -> NXT; 1/2/3 kept; cull/culled -> CULLED; '' -> ''. null = invalid. */
+/** Nxt/next/nx -> NXT; 1/2 kept; R/rejected -> R; cull/culled -> CULLED; '' -> ''. null = invalid. */
 export function parseCull(raw: string): string | null {
   const v = String(raw ?? '').trim().toUpperCase().replace(/\.$/, '');
   if (v === '') return '';
   if (['NX', 'NXT', 'NEXT'].includes(v)) return 'NXT';
-  if (['1', '2', '3'].includes(v)) return v;
+  if (['1', '2'].includes(v)) return v;
+  if (v === 'R' || v === 'REJ' || v === 'REJECT' || v === 'REJECTED') return 'R';
   if (v === 'CULL' || v === 'CULLED') return 'CULLED';
   return null;
 }
@@ -64,6 +65,12 @@ export function parseComment(raw: string, knownCodes: string[]): { codes: string
   return { codes, cull, unknown };
 }
 
+/** "NT" = croc with no tag: give it a per-pen id so different untagged crocs never merge. */
+export function noTagId(raw: string, house: string, line: string, pen: number): string {
+  const t = String(raw ?? '').trim();
+  return t.toUpperCase() === 'NT' ? `NT-${house}-${line}${pen}` : t;
+}
+
 export function isBlank(r: SheetRow) { return !r.pen.trim() && !r.tag.trim() && !r.size.trim() && !r.cull.trim() && !r.comment.trim(); }
 
 export interface ValidRow { client_id: string; house: string; line: string; pen: number; tag: string; size_cm: number | null; cull: string; codes: string[] }
@@ -74,8 +81,8 @@ export function validateRow(r: SheetRow, defaultHouse: string, knownCodes: strin
   if (!house) return { ok: false, error: 'House must be GH1 or GH2' };
   const pen = parsePen(r.pen);
   if (!pen) return { ok: false, error: 'Pen must look like A12 (line A–N + number)' };
-  const tag = r.tag.trim();
-  if (!tag) return { ok: false, error: 'Tag is required' };
+  const tag = noTagId(r.tag, house, pen.line, pen.pen);
+  if (!tag) return { ok: false, error: 'Tag is required (use NT if the croc has no tag)' };
   let size_cm: number | null = null;
   if (r.size.trim()) {
     const n = parseFloat(r.size.replace(',', '.').replace(/[^\d.]/g, ''));
@@ -83,7 +90,7 @@ export function validateRow(r: SheetRow, defaultHouse: string, knownCodes: strin
     size_cm = n;
   }
   let cull = parseCull(r.cull);
-  if (cull === null) return { ok: false, error: 'Cull must be Nxt, 1, 2, 3 or Cull' };
+  if (cull === null) return { ok: false, error: 'Cull must be Nxt, 1, 2, R or Cull' };
   const c = parseComment(r.comment, knownCodes);
   if (c.unknown.length) return { ok: false, error: `Unknown condition: ${c.unknown.join(', ')}` };
   if (c.cull) cull = 'CULLED';

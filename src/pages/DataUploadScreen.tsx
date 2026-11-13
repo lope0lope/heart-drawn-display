@@ -687,7 +687,7 @@ export default function DataUploadScreen() {
                           <td className={`p-[5px_8px] border border-border font-mono-ibm font-medium ${
                             r.cull === '1' || r.cull.toUpperCase() === 'NXT' ? 'text-ct-danger' :
                             r.cull === '2' ? 'text-ct-warn' :
-                            r.cull === '3' ? 'text-ct-info' : 'text-ct-text3'
+                            r.cull === 'R' ? 'text-ct-info' : 'text-ct-text3'
                           }`}>{r.cull || '—'}</td>
                         </tr>
                       ))}
@@ -715,7 +715,7 @@ export default function DataUploadScreen() {
                     k === '1' || k === 'NXT' ? 'text-ct-danger' : k === '2' ? 'text-ct-warn' : 'text-ct-info'
                   }`}>{count}</div>
                   <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[1px] uppercase mt-0.5">
-                    {k === '1' ? 'Cull Now' : k === 'NXT' ? 'Next Cycle' : k === '2' ? '2 Cycles' : k === '3' ? '3 Cycles' : `Cull ${k}`}
+                    {k === '1' ? 'Cull Now' : k === 'NXT' ? 'Next Cycle' : k === '2' ? '2 Cycles' : k === 'R' ? 'Rejected' : `Cull ${k}`}
                   </div>
                 </div>
               ))}

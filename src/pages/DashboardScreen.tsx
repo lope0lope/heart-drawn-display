@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs } from '@/hooks/useCrocs';
-import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon } from '@/lib/crocUtils';
+import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets, getOccupied, cullMarkerHorizon, isRejected } from '@/lib/crocUtils';
 import CullHorizonDialog from '@/components/CullHorizonDialog';
 import CrocStateVenn from '@/components/CrocStateVenn';
 import type { CrocRecord } from '@/hooks/useCrocs';
@@ -27,19 +27,29 @@ export default function DashboardScreen() {
 
   const grouped = useMemo(() => {
     const occupied = allCrocs ? getOccupied(allCrocs) : [];
-    const groups: Record<0 | 1 | 2 | 3, CrocRecord[]> = { 0: [], 1: [], 2: [], 3: [] };
+    const groups: Record<0 | 1 | 2, CrocRecord[]> = { 0: [], 1: [], 2: [] };
+    const rejected: CrocRecord[] = []; const unmarked: CrocRecord[] = [];
     for (const c of occupied) {
       const h = cullMarkerHorizon(c);
       if (h !== null) groups[h].push(c);
+      else if (isRejected(c)) rejected.push(c);
+      else unmarked.push(c);
     }
-    return { occupied, groups };
+    return { occupied, groups, rejected, unmarked };
   }, [allCrocs]);
 
   if (isLoading || !allCrocs) {
     return <div className="text-ct-text3 text-xs font-mono-ibm py-10 text-center">Loading live data…</div>;
   }
 
-  const { occupied, groups } = grouped;
+  const { occupied, groups, rejected, unmarked } = grouped;
+  const states = [
+    { label: 'NX', title: 'Ready Next Cycle (NX)', list: groups[0] },
+    { label: '1', title: 'Ready in 1 More Cycle', list: groups[1] },
+    { label: '2', title: 'Ready in 2 More Cycles', list: groups[2] },
+    { label: 'R', title: 'Rejected (R)', list: rejected },
+    { label: 'Not marked', title: 'Not marked', list: unmarked },
+  ].map(s => ({ ...s, counts: countSizeBuckets(s.list) }));
   const gh1Count = occupied.filter(c => c.pen_id === 'GH1').length;
   const gh2Count = occupied.filter(c => c.pen_id === 'GH2').length;
   const bc = countSizeBuckets(occupied);
@@ -78,15 +88,41 @@ export default function DashboardScreen() {
           onClick={() => openDrill('Ready in 2 More Cycles', groups[2])}
         />
         <KPI
-          label="Ready in 3 More Cycles"
-          value={groups[3].length.toString()}
-          sub="Marked 3"
-          variant="good"
-          onClick={() => openDrill('Ready in 3 More Cycles', groups[3])}
+          label="Rejected (R)"
+          value={rejected.length.toString()}
+          sub="Marked R · tap for sizes"
+          variant="danger"
+          onClick={() => openDrill('Rejected (R)', rejected)}
         />
       </div>
 
       <CrocStateVenn crocs={occupied} onOpen={openDrill} />
+
+      <div className="bg-surface border border-border rounded overflow-hidden mb-5">
+        <div className="px-[18px] py-3 border-b border-border">
+          <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">Sizes by State — croc count per belly size</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px] font-mono-ibm border-collapse">
+            <thead>
+              <tr className="text-ct-text3">
+                <th className="text-left px-3 py-2 border-b border-border sticky left-0 bg-surface">State</th>
+                {SIZE_BUCKETS.map((b, i) => <th key={i} className="px-1.5 py-2 border-b border-border whitespace-nowrap" style={{ color: sizeBucketColor(i) }}>{b.range.replace(' cm', '')}</th>)}
+                <th className="px-3 py-2 border-b border-border">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {states.map(s => (
+                <tr key={s.label} className="cursor-pointer hover:bg-surface-2" onClick={() => openDrill(s.title, s.list)}>
+                  <td className="px-3 py-2 border-b border-border font-semibold text-ct-text sticky left-0 bg-surface whitespace-nowrap">{s.label}</td>
+                  {s.counts.map((n, i) => <td key={i} className={`px-1.5 py-2 border-b border-border text-center ${n ? 'text-ct-text font-semibold' : 'text-ct-text3'}`}>{n || '·'}</td>)}
+                  <td className="px-3 py-2 border-b border-border text-center font-semibold text-ct-accent">{s.list.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <div className="bg-surface border border-border rounded overflow-hidden">
         <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">

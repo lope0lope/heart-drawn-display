@@ -20,7 +20,7 @@ export default function ConditionCodesScreen() {
     { label: 'NXT', col: 'text-ct-cull', bg: 'bg-[rgba(107,63,160,.15)]', meaning: 'Cull at next inspection. Defect is progressing — do not delay.' },
     { label: '1', col: 'text-ct-danger', bg: 'bg-[rgba(192,57,43,.12)]', meaning: 'Potential cull in 2 inspections. Monitor closely every visit.' },
     { label: '2', col: 'text-ct-warn', bg: 'bg-[rgba(212,137,42,.12)]', meaning: 'Potential cull in 3 inspections. Flag for tracking.' },
-    { label: '3', col: 'text-ct-info', bg: 'bg-[rgba(74,144,184,.12)]', meaning: 'Potential cull in 4 inspections. Note and monitor.' },
+    { label: 'R', col: 'text-ct-info', bg: 'bg-[rgba(74,144,184,.12)]', meaning: 'Rejected — croc is graded as a reject.' },
     { label: '4', col: 'text-ct-danger', bg: 'bg-[rgba(192,57,43,.2)]', meaning: 'Remove from pen immediately. Replace with new croc. Defect is disqualifying.' },
   ];
 

@@ -162,13 +162,17 @@ export function getOccupied(crocs: CrocRecord[]): CrocRecord[] {
  *   '3'                   -> 3
  *   anything else / empty -> null (not marked for cull)
  */
-export function cullMarkerHorizon(croc: CrocRecord): 0 | 1 | 2 | 3 | null {
+export function cullMarkerHorizon(croc: CrocRecord): 0 | 1 | 2 | null {
   const raw = (croc.cull_schedule ?? '').trim().toUpperCase();
   if (raw === 'NX' || raw === 'NXT' || raw === 'NEXT') return 0;
   if (raw === '1') return 1;
   if (raw === '2') return 2;
-  if (raw === '3') return 3;
   return null;
+}
+
+/** Staff marked the croc "R" = rejected. */
+export function isRejected(croc: CrocRecord): boolean {
+  return (croc.cull_schedule ?? '').trim().toUpperCase() === 'R';
 }
 
 /**

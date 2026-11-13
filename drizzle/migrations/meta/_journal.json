@@ -29,6 +29,13 @@
       "when": 1794470628154,
       "tag": "0003_fix_wipe_safe_delete_predicates",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794567881253,
+      "tag": "0004_capture_rejected_and_no_tag",
+      "breakpoints": true
     }
   ]
 }

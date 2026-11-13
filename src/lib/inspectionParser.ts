@@ -21,12 +21,13 @@ export interface ParsedInspectionFile {
   warnings: string[];
 }
 
-/** Normalise cull field to standard codes: NXT, 1, 2, 3 or empty */
+/** Normalise cull field to standard codes: NXT, 1, 2, R (rejected) or empty */
 export function normaliseCull(raw: string): string {
   const v = (raw ?? '').toString().trim().toUpperCase();
   if (v === 'CULL' || v === 'CULLED') return 'CULLED';
   if (v === 'NXT' || v === 'NEXT' || v === 'NX') return 'NXT';
-  if (['1', '2', '3'].includes(v)) return v;
+  if (['1', '2'].includes(v)) return v;
+  if (['R', 'REJ', 'REJECT', 'REJECTED'].includes(v)) return 'R';
   if (v === '') return '';
   return '';
 }
@@ -202,8 +203,8 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
     for (let r = idx + 1; r < sheet.rows.length; r++) {
       const row = sheet.rows[r] ?? [];
       const tagRaw = row[cols.tag];
-      const tag = tagRaw == null ? '' : String(tagRaw).trim();
-      if (!tag) continue;
+      const tagCell = tagRaw == null ? '' : String(tagRaw).trim();
+      if (!tagCell) continue;
 
       const house = String(row[cols.house] ?? '').trim().toUpperCase();
       if (house !== 'GH1' && house !== 'GH2') {
@@ -241,6 +242,8 @@ export async function parseInspectionFile(file: File): Promise<ParsedInspectionF
         }
       }
 
+      // "NT" = no tag: give each untagged croc a per-pen id so they never merge.
+      const tag = tagCell.toUpperCase() === 'NT' ? `NT-${house}-${ps.line}${ps.slot}` : tagCell;
       // Dedupe by inspection identity: house + pen + tag + date
       const dedupeKey = `${house}|${ps.line}${ps.slot}|${tag}|${inspISO}`;
       if (seenRowKeys.has(dedupeKey)) {

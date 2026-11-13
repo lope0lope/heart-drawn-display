@@ -28,3 +28,20 @@ describe('sheet entry decoding', () => {
     expect(rows[0]).toMatchObject({ pen: 'a1', size: '30', cull: 'nxt', tag: 'T1', comment: 'bs' });
   });
 });
+
+describe('R marker, NT tags and small codes', () => {
+  it('accepts R as rejected and NX as NXT, rejects 3', () => {
+    expect(parseCull('r')).toBe('R');
+    expect(parseCull('NX')).toBe('NXT');
+    expect(parseCull('3')).toBeNull();
+  });
+  it('gives NT crocs a per-pen id so they never merge', () => {
+    const a = validateRow({ ...blankRow(), pen: 'a1', tag: 'nt' }, 'GH1', codes);
+    const b = validateRow({ ...blankRow(), pen: 'a2', tag: 'NT' }, 'GH1', codes);
+    expect(a.ok && a.value.tag).toBe('NT-GH1-A1');
+    expect(b.ok && b.value.tag).toBe('NT-GH1-A2');
+  });
+  it('reads comma-separated conditions incl. small versions', () => {
+    expect(parseComment('BS,DS,bss', ['BS', 'DS', 'BSS']).codes).toEqual(['BS', 'DS', 'BSS']);
+  });
+});
