@@ -1,5 +1,8 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SIZE_BUCKETS, sizeBucketColor, countSizeBuckets } from '@/lib/crocUtils';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
+import { downloadCrocListPdf } from '@/lib/crocListPdf';
 import type { CrocRecord } from '@/hooks/useCrocs';
 
 interface Props {
@@ -38,6 +41,9 @@ export default function CullHorizonDialog({ open, onOpenChange, title, crocs }: 
             ))
           )}
         </div>
+        <Button onClick={() => downloadCrocListPdf(title, crocs)} disabled={total === 0} className="w-full mt-2">
+          <Download className="h-4 w-4 mr-2" /> Download printable list (PDF)
+        </Button>
       </DialogContent>
     </Dialog>
   );
