@@ -15,6 +15,7 @@ const navItems: Array<{ section?: string; id: ScreenName; icon: string; label: s
   { section: 'Data Entry', id: 'sheet', icon: '▦', label: 'Data Entry Sheet' },
   { section: 'Records', id: 'upload', icon: '↑', label: 'Data Upload' },
   { id: 'croc', icon: '◇', label: 'Croc Profiles' },
+  { section: 'Reports', id: 'analytics', icon: '▤', label: 'Analytics' },
 ];
 
 function NavBody({ activeScreen, onNavigate }: { activeScreen: ScreenName; onNavigate: (s: ScreenName) => void }) {
