@@ -36,6 +36,13 @@
       "when": 1794567881253,
       "tag": "0004_capture_rejected_and_no_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795764799737,
+      "tag": "0005_pos_to_os_condition_code",
+      "breakpoints": true
     }
   ]
 }

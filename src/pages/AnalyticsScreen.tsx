@@ -1,14 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useAllCrocs, useConditionCodes, useInspectionHistory, type CrocRecord } from '@/hooks/useCrocs';
+import { useCullRecords } from '@/hooks/useCullData';
 import { getOccupied, countConditions, sizeBand, sizeBandColor, SIZE_BANDS } from '@/lib/crocUtils';
+import { buildCulledReportRows, summarizeLine } from '@/lib/lineReports';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 type ViewMode = 'heatmap' | 'table' | 'bar';
 
-function Panel({ title, pill, children }: { title: string; pill?: React.ReactNode; children: React.ReactNode }) {
+function Panel({ title, pill, children, className }: { title: string; pill?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className="bg-surface border border-border rounded overflow-hidden">
+    <div className={`bg-surface border border-border rounded overflow-hidden ${className ?? ''}`}>
       <div className="px-[18px] py-3 border-b border-border flex items-center justify-between">
         <span className="font-mono-ibm text-[10px] text-ct-text3 tracking-[2px] uppercase">{title}</span>
         {pill}
@@ -19,16 +21,24 @@ function Panel({ title, pill, children }: { title: string; pill?: React.ReactNod
 }
 
 export default function AnalyticsScreen() {
-  const { data: allCrocs, isLoading } = useAllCrocs();
+  const { data: allCrocs, isLoading } = useAllCrocs(true);
   const { data: conditionDefs } = useConditionCodes();
+  const { data: cullRecords, isLoading: isLoadingCullRecords, error: cullRecordsError } = useCullRecords();
 
   const [filterField, setFilterField] = useState('Condition Code');
   const [filterOp, setFilterOp] = useState('contains');
   const [filterValue, setFilterValue] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('heatmap');
   const [queryApplied, setQueryApplied] = useState(false);
+  const [lineReportLine, setLineReportLine] = useState('M');
+  const [includeCulledInLineReport, setIncludeCulledInLineReport] = useState(false);
+  const [culledReportMonth, setCulledReportMonth] = useState('all');
 
-  const occupied = useMemo(() => getOccupied(allCrocs ?? []), [allCrocs]);
+  const activeCrocs = useMemo(
+    () => (allCrocs ?? []).filter(c => c.cull_schedule !== 'CULLED'),
+    [allCrocs],
+  );
+  const occupied = useMemo(() => getOccupied(activeCrocs), [activeCrocs]);
 
   const filteredCrocs = useMemo(() => {
     if (!queryApplied || !filterValue) return occupied;
@@ -60,10 +70,37 @@ export default function AnalyticsScreen() {
       case 'Condition Code': return conditionDefs?.map(c => c.code) ?? [];
       case 'Pen': return ['GH1', 'GH2'];
       case 'Size Band': return ['0', '1', '2', '3', '4', '5'];
-      case 'Line': return [...new Set((allCrocs ?? []).map(c => c.line))].sort();
+      case 'Line': return [...new Set(activeCrocs.map(c => c.line))].sort();
       default: return [];
     }
-  }, [filterField, conditionDefs, allCrocs]);
+  }, [filterField, conditionDefs, activeCrocs]);
+
+  const lineReportCrocs = useMemo(
+    () => includeCulledInLineReport ? allCrocs ?? [] : activeCrocs,
+    [includeCulledInLineReport, allCrocs, activeCrocs],
+  );
+  const lineOptions = useMemo(
+    () => [...new Set(lineReportCrocs.map(c => c.line))].sort(),
+    [lineReportCrocs],
+  );
+  const selectedLine = lineOptions.includes(lineReportLine) ? lineReportLine : lineOptions[0] ?? '';
+  const lineRows = useMemo(
+    () => lineReportCrocs.filter(c => c.line === selectedLine),
+    [lineReportCrocs, selectedLine],
+  );
+  const lineSummary = useMemo(() => summarizeLine(lineRows), [lineRows]);
+
+  const culledRows = useMemo(
+    () => buildCulledReportRows(allCrocs ?? [], cullRecords ?? []),
+    [allCrocs, cullRecords],
+  );
+  const culledMonths = useMemo(
+    () => [...new Set(culledRows.map(row => row.date.slice(0, 7)))].sort().reverse(),
+    [culledRows],
+  );
+  const visibleCulledRows = culledReportMonth === 'all'
+    ? culledRows
+    : culledRows.filter(row => row.date.startsWith(`${culledReportMonth}-`));
 
   // Batch comparison: avg belly by tag range
   const batchComparison = useMemo(() => {
@@ -313,6 +350,135 @@ export default function AnalyticsScreen() {
             </div>
           );
         })}
+      </Panel>
+
+      <Panel title="Line Query — Size Bands & Cull Schedule" className="md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <label className="flex items-center gap-2 font-mono-ibm text-[10px] text-ct-text3">
+            Line
+            <select
+              value={selectedLine}
+              onChange={e => setLineReportLine(e.target.value)}
+              className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm outline-none"
+            >
+              {lineOptions.map(line => <option key={line} value={line}>{line}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 font-mono-ibm text-[10px] text-ct-text3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeCulledInLineReport}
+              onChange={e => setIncludeCulledInLineReport(e.target.checked)}
+            />
+            Include previously culled
+          </label>
+          <span className="ml-auto font-mono-ibm text-[10px] text-ct-text3">
+            {lineRows.length} records · {selectedLine ? `Line ${selectedLine}` : 'No lines available'}
+          </span>
+        </div>
+        {selectedLine ? (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              {[
+                { label: 'Cull', value: lineSummary.cull },
+                { label: 'NX', value: lineSummary.nx },
+                { label: '1', value: lineSummary.one },
+                { label: '2', value: lineSummary.two },
+              ].map(item => (
+                <div key={item.label} className="bg-surface-2 border border-border rounded p-3 text-center">
+                  <div className="font-mono-ibm text-[9px] text-ct-text3 tracking-[1px] uppercase">{item.label}</div>
+                  <div className="font-display text-2xl font-semibold text-ct-text">{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] font-mono-ibm border-collapse">
+                <thead>
+                  <tr className="text-ct-text3">
+                    <th className="text-left px-3 py-2 border-b border-border">Size band</th>
+                    <th className="text-right px-3 py-2 border-b border-border">Croc count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SIZE_BANDS.map((band, index) => (
+                    <tr key={band.range}>
+                      <td className="px-3 py-2 border-b border-border">{band.range}</td>
+                      <td className="px-3 py-2 border-b border-border text-right font-semibold">{lineSummary.sizes[index]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="text-xs text-ct-text3 text-center py-4">No line data available.</div>
+        )}
+      </Panel>
+
+      <Panel title="Culled Crocs — Monthly Report" className="md:col-span-2">
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <label className="flex items-center gap-2 font-mono-ibm text-[10px] text-ct-text3">
+            Month
+            <select
+              value={culledReportMonth}
+              onChange={e => setCulledReportMonth(e.target.value)}
+              className="bg-surface-2 border border-border text-ct-text px-2.5 py-[7px] font-mono-ibm text-[11px] rounded-sm outline-none"
+            >
+              <option value="all">All months</option>
+              {culledMonths.map(month => <option key={month} value={month}>{month}</option>)}
+            </select>
+          </label>
+          <span className="ml-auto font-mono-ibm text-[10px] text-ct-text3">
+            {visibleCulledRows.length} culled crocs
+          </span>
+        </div>
+        <p className="text-[10px] text-ct-text3 mb-3">
+          Uses the recorded cull date when available; otherwise uses the croc&apos;s latest inspection date.
+        </p>
+        {cullRecordsError && (
+          <p role="alert" className="text-xs text-ct-danger mb-3">
+            Cull dates could not be loaded. Showing inspection dates where available.
+          </p>
+        )}
+        {isLoadingCullRecords ? (
+          <div className="text-xs text-ct-text3 text-center py-4">Loading cull dates…</div>
+        ) : visibleCulledRows.length === 0 ? (
+          <div className="text-xs text-ct-text3 text-center py-4">No culled crocs for this month.</div>
+        ) : (
+          <div className="max-h-[360px] overflow-auto">
+            <table className="w-full min-w-[560px] text-[11px] font-mono-ibm border-collapse">
+              <thead>
+                <tr className="text-ct-text3 sticky top-0 bg-surface">
+                  <th className="text-left px-3 py-2 border-b border-border">Cull date</th>
+                  <th className="text-left px-3 py-2 border-b border-border">Pen</th>
+                  <th className="text-left px-3 py-2 border-b border-border">Line</th>
+                  <th className="text-left px-3 py-2 border-b border-border">Slot</th>
+                  <th className="text-left px-3 py-2 border-b border-border">Tag</th>
+                  <th className="text-right px-3 py-2 border-b border-border">Size</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCulledRows.map(row => (
+                  <tr key={row.croc.id}>
+                    <td className="px-3 py-2 border-b border-border">
+                      {row.date}{row.usesInspectionDate ? ' *' : ''}
+                    </td>
+                    <td className="px-3 py-2 border-b border-border">{row.croc.pen_id}</td>
+                    <td className="px-3 py-2 border-b border-border">{row.croc.line}</td>
+                    <td className="px-3 py-2 border-b border-border">{row.croc.pen_slot}</td>
+                    <td className="px-3 py-2 border-b border-border">{row.croc.tag ?? '—'}</td>
+                    <td className="px-3 py-2 border-b border-border text-right">
+                      {row.croc.belly_cm === null ? '—' : `${row.croc.belly_cm} cm`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {visibleCulledRows.some(row => row.usesInspectionDate) && (
+              <p className="text-[10px] text-ct-text3 mt-2">* No cull event date was recorded; inspection date shown.</p>
+            )}
+          </div>
+        )}
       </Panel>
     </div>
   );

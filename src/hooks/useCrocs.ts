@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPages } from '@/lib/fetchAllPages';
 
 export interface CrocRecord {
   id: number;
@@ -26,32 +27,31 @@ export interface ConditionCodeRecord {
   is_hide: boolean;
 }
 
+function fetchCrocs(penId?: string, includeCulled = false) {
+  return fetchAllPages((from, to) => {
+    let query = supabase.from('crocs').select('*');
+    if (!includeCulled) query = query.or('cull_schedule.is.null,cull_schedule.neq.CULLED');
+    if (penId) query = query.eq('pen_id', penId);
+    return query
+      .order('pen_id')
+      .order('line')
+      .order('pen_slot')
+      .order('id')
+      .range(from, to);
+  });
+}
+
 export function useCrocs(penId?: string) {
   return useQuery({
     queryKey: ['crocs', penId],
-    queryFn: async () => {
-      let query = supabase.from('crocs').select('*').or('cull_schedule.is.null,cull_schedule.neq.CULLED');
-      if (penId) query = query.eq('pen_id', penId);
-      const { data, error } = await query.order('line').order('pen_slot');
-      if (error) throw error;
-      return (data ?? []) as CrocRecord[];
-    },
+    queryFn: async () => (await fetchCrocs(penId)) as CrocRecord[],
   });
 }
 
 export function useAllCrocs(includeCulled = false) {
   return useQuery({
     queryKey: includeCulled ? ['crocs', 'all', 'including-culled'] : ['crocs', 'all'],
-    queryFn: async () => {
-      let query = supabase.from('crocs').select('*');
-      if (!includeCulled) query = query.or('cull_schedule.is.null,cull_schedule.neq.CULLED');
-      const { data, error } = await query
-        .order('pen_id')
-        .order('line')
-        .order('pen_slot');
-      if (error) throw error;
-      return (data ?? []) as CrocRecord[];
-    },
+    queryFn: async () => (await fetchCrocs(undefined, includeCulled)) as CrocRecord[],
   });
 }
 
@@ -102,12 +102,14 @@ export function usePenMeta(penId: string) {
   return useQuery({
     queryKey: ['pen_meta', penId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const rows = await fetchAllPages((from, to) => supabase
         .from('crocs')
         .select('line, pen_slot, belly_cm')
-        .eq('pen_id', penId);
-      if (error) throw error;
-      const rows = data ?? [];
+        .eq('pen_id', penId)
+        .order('line')
+        .order('pen_slot')
+        .order('id')
+        .range(from, to));
       const lines = [...new Set(rows.map(r => r.line))].sort();
       const maxSlot = Math.max(...rows.map(r => r.pen_slot), 0);
       return { lines, maxSlot };

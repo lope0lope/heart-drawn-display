@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllPages } from '@/lib/fetchAllPages';
 import { useAllCrocs } from '@/hooks/useCrocs';
 import { SIZE_BANDS, sizeBand, countSizeBands, getOccupied, cullEligibleCycle } from '@/lib/crocUtils';
 
@@ -7,7 +8,7 @@ export interface CullRecord {
   id: number;
   croc_id: number | null;
   cull_date: string;
-  size_band_index: number;
+  size_band_index: number | null;
   reason: string | null;
   created_at: string;
 }
@@ -16,17 +17,12 @@ export interface CullRecord {
 export function useCullRecords() {
   return useQuery({
     queryKey: ['cull_records'],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    queryFn: async () => (await fetchAllPages((from, to) => supabase
         .from('cull_records')
         .select('*')
-        .order('cull_date', { ascending: false });
-      if (error) {
-        console.warn('cull_records query failed:', error.message);
-        return [] as CullRecord[];
-      }
-      return (data ?? []) as CullRecord[];
-    },
+        .order('cull_date', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to))) as CullRecord[],
   });
 }
 
@@ -39,7 +35,7 @@ export function useYtdCulled() {
   if (records) {
     for (const r of records) {
       const d = new Date(r.cull_date);
-      if (d.getFullYear() === year && r.size_band_index >= 0 && r.size_band_index < 6) {
+      if (d.getFullYear() === year && r.size_band_index !== null && r.size_band_index >= 0 && r.size_band_index < 6) {
         counts[r.size_band_index]++;
       }
     }
@@ -70,7 +66,10 @@ export function useGrowthRates() {
         const crocId = data[i].croc_id;
         const crocRows: { belly_cm: number; inspection_date: string }[] = [];
         while (i < data.length && data[i].croc_id === crocId) {
-          if (data[i].belly_cm != null) crocRows.push(data[i] as any);
+          const row = data[i];
+          if (row.belly_cm != null) {
+            crocRows.push({ belly_cm: row.belly_cm, inspection_date: row.inspection_date });
+          }
           i++;
         }
         for (let j = 1; j < crocRows.length; j++) {
